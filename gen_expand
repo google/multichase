@@ -1,0 +1,45 @@
+#!/usr/bin/perl
+# Copyright 2015 Google Inc. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+use warnings;
+use strict;
+
+defined(my $n = shift)
+        or die "usage: $0 n\n";
+
+# special cases i can't be bothered to handle otherwise
+print "#define x1(x) x\n";
+print "#define x2(x) x x\n";
+print "#define x3(x) x2(x) x\n";
+
+sub find_largest_factors($) {
+        my ($x) = @_;
+        for (my $y = int(sqrt($x)); $y >= 2; --$y) {
+                if ($x % $y == 0) {
+                        my $z = $x/$y;
+                        return "x$y(x$z(x))";
+                }
+        }
+        return undef;
+}
+
+foreach my $i (4..$n) {
+        if (my $factors = find_largest_factors($i)) {
+                print "#define x$i(x) $factors\n";
+        }
+        else {
+                my $factors = find_largest_factors($i-1);
+                print "#define x$i(x) $factors x\n";
+        }
+}
