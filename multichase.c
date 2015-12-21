@@ -45,7 +45,7 @@
 //   stream prefetchers, but you need to get out well past 32 pages before
 //   all existing hw prefetchers are defeated, and then you start exceding the
 //   TLB locality on several CPUs and incurring some TLB overhead.
-// 
+//
 #define DEF_TOTAL_MEMORY        ((size_t)256*1024*1024)
 #define DEF_STRIDE              ((size_t)256)
 #define DEF_NR_SAMPLES          ((size_t)5)
@@ -56,6 +56,8 @@
 
 int verbosity;
 int print_timestamp;
+int is_weighted_mbind;
+uint16_t mbind_weights[MAX_MEM_NODES];
 
 #ifdef __i386__
 #define MAX_PARALLEL (6)        // maximum number of chases in parallel
@@ -535,7 +537,7 @@ int main(int argc, char **argv)
 
         setvbuf(stdout, NULL, _IOLBF, BUFSIZ);
 
-        while ((c = getopt(argc, argv, "ac:F:Hm:n:oO:S:s:T:t:vXy"
+        while ((c = getopt(argc, argv, "ac:F:Hm:n:oO:S:s:T:t:vXyW:"
                           )) != -1) {
                 switch (c) {
                 case 'a':
@@ -622,6 +624,26 @@ int main(int argc, char **argv)
                 case 'H':
                         alloc_arena = alloc_arena_shm;
                         break;
+                case 'W':
+                        is_weighted_mbind = 1;
+                        char* tok = NULL, *saveptr = NULL;
+                        tok = strtok_r(optarg, ",", &saveptr);
+                        while (tok != NULL) {
+                                uint16_t node_id;
+                                uint16_t weight;
+                                int count = sscanf(tok, "%hu:%hu", &node_id, &weight);
+                                if (count != 2) {
+                                        fprintf(stderr, "Expecting node_id:weight\n");
+                                        exit(1);
+                                }
+                                if (node_id >= sizeof(mbind_weights)/sizeof(mbind_weights[0])) {
+                                        fprintf(stderr, "Maximum node_id is %lu\n", sizeof(mbind_weights)/sizeof(mbind_weights[0])-1);
+                                        exit(1);
+                                }
+                                mbind_weights[node_id] = weight;
+                                tok = strtok_r(NULL, ",", &saveptr);
+                        }
+                        break;
                 case 'X':
                         set_thread_affinity = 0;
                         break;
@@ -656,6 +678,8 @@ usage:
                 fprintf(stderr, "-F nnnn[kmg]   amount of memory to use to flush the caches after constructing\n"
                                 "               the chase and before starting the benchmark (use with nta)\n"
                                 "               default: %zu\n", DEF_CACHE_FLUSH);
+                fprintf(stderr, "-W mbind list  list of node:weight,... pairs for allocating memory\n"
+                                "               has no effect if -H flag is specified\n");
                 fprintf(stderr, "-X             do not set thread affinity\n");
                 fprintf(stderr, "-y             print timestamp in front of each line\n");
                 exit(1);
