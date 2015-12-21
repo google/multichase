@@ -679,7 +679,8 @@ usage:
                                 "               the chase and before starting the benchmark (use with nta)\n"
                                 "               default: %zu\n", DEF_CACHE_FLUSH);
                 fprintf(stderr, "-W mbind list  list of node:weight,... pairs for allocating memory\n"
-                                "               has no effect if -H flag is specified\n");
+                                "               has no effect if -H flag is specified\n"
+                                "               0:10,1:90 weights it as 10%% on 0 and 90%% on 1\n");
                 fprintf(stderr, "-X             do not set thread affinity\n");
                 fprintf(stderr, "-y             print timestamp in front of each line\n");
                 exit(1);
