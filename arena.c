@@ -14,14 +14,61 @@
 #include <sys/mman.h>
 #include <sys/ipc.h>
 #include <sys/shm.h>
+#include <sys/syscall.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <string.h>
 #include <stdlib.h>
+#include <linux/mempolicy.h>
 
 #include "arena.h"
+#include "permutation.h"
 
 extern int verbosity;
+extern int is_weighted_mbind;
+extern uint16_t mbind_weights[MAX_MEM_NODES];
+
+static inline int mbind(void *addr, unsigned long len, int mode,
+												unsigned long *nodemask,unsigned long maxnode,
+												unsigned flags) {
+	return syscall(__NR_mbind, addr, len, mode, nodemask, maxnode, flags);
+}
+
+
+static void arena_weighted_mbind(void *arena, size_t arena_size,
+																 uint16_t *weights, size_t nr_weights) {
+	/* compute cumulative sum for weights
+	 * cumulative sum starts at -1
+	 * the method for determining a hit on a weight i is when the generated
+	 * random number (modulo sum of weights) <= weights_cumsum[i]
+	 */
+	int64_t weights_cumsum[nr_weights];
+	weights_cumsum[0] = weights[0] - 1;
+	for (unsigned int i = 1; i < nr_weights; i++) {
+		weights_cumsum[i] = weights_cumsum[i-1] + weights[i];
+	}
+	const int32_t weight_sum = weights_cumsum[nr_weights-1]+1;
+	const int pagesize = getpagesize();
+
+	uint64_t mask = 0;
+	char *q = (char *)arena + arena_size;
+	rng_init(1);
+	for (char *p = arena; p < q; p += pagesize) {
+		uint32_t r = rng_int(1<<31) % weight_sum;
+		unsigned int node;
+		for (node = 0; node < nr_weights; node++) {
+			if (weights_cumsum[node] >= r) {
+				break;
+			}
+		}
+		mask = 1 << node;
+		if (mbind(p, pagesize, MPOL_BIND, &mask, nr_weights, MPOL_MF_STRICT)) {
+			perror("mbind");
+			exit(1);
+		}
+		*p = 0;
+	}
+}
 
 void *alloc_arena_mmap(size_t arena_size)
 {
@@ -33,6 +80,10 @@ void *alloc_arena_mmap(size_t arena_size)
 	if (arena == MAP_FAILED) {
 		perror("mmap");
 		exit(1);
+	}
+
+	if (is_weighted_mbind) {
+		arena_weighted_mbind(arena, arena_size, mbind_weights, MAX_MEM_NODES);
 	}
 	return arena;
 }
