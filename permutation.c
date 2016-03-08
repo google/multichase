@@ -13,6 +13,7 @@
  */
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <assert.h>
 #include "permutation.h"
 
@@ -97,7 +98,19 @@ void generate_chase_mixer(struct generate_chase_common_args *args)
         void (*gen_permutation)(perm_t *, size_t, size_t) = args->gen_permutation;
 
         perm_t *t = malloc(nr_mixer_indices * sizeof(*t));
+        if (t == NULL) {
+          fprintf(stderr,
+                  "Could not allocate %lu bytes, check stride/memory size?\n",
+                  nr_mixer_indices * sizeof(*t));
+          exit(1);
+        }
         perm_t *r = malloc(nr_mixer_indices * NR_MIXERS * sizeof(*r));
+        if (r == NULL) {
+          fprintf(stderr,
+                  "Could not allocate %lu bytes, check stride/memory size?\n",
+                  nr_mixer_indices * NR_MIXERS * sizeof(*r));
+          exit(1);
+        }
         size_t i;
         size_t j;
 
