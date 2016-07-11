@@ -45,11 +45,12 @@
 //   stream prefetchers, but you need to get out well past 32 pages before
 //   all existing hw prefetchers are defeated, and then you start exceding the
 //   TLB locality on several CPUs and incurring some TLB overhead.
+//   Hence, the default has been changed from 16 pages to 64 pages.
 //
 #define DEF_TOTAL_MEMORY        ((size_t)256*1024*1024)
 #define DEF_STRIDE              ((size_t)256)
 #define DEF_NR_SAMPLES          ((size_t)5)
-#define DEF_TLB_LOCALITY        ((size_t)16*4096)
+#define DEF_TLB_LOCALITY        ((size_t)64*4096)
 #define DEF_NR_THREADS          ((size_t)1)
 #define DEF_CACHE_FLUSH         ((size_t)64*1024*1024)
 #define DEF_OFFSET              ((size_t)0)

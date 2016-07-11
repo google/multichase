@@ -35,7 +35,7 @@ int is_a_permutation(const perm_t *perm, size_t nr_elts);
 // (thread number, parallel chase) index.  the mixer is a function on (element
 // index, thread number, parallel chase) which makes the offset into the element
 // unpredictable.
-// 
+//
 // the actual mixer is implemented as a large set of permutations on the
 // low bits of the element number.  the details are private to the implementation.
 
@@ -61,35 +61,28 @@ void generate_chase_mixer(struct generate_chase_common_args *args);
 void *generate_chase(const struct generate_chase_common_args *args, size_t mixer_idx);
 
 //============================================================================
-// we want to generate a "random" pattern but we want it to be reproduceable
-// across systems and c libraries... so we use this simple LCRNG (constants
-// stolen from ISO C std.).
-//
-// we want to generate permutations on the order of 2**29 elements... (64GiB
-// with stride 128:  2**36/2**7 = 2**29).
-//
-// this LCRNG has a period of 2**32 with this modulus... starting seed is
-// basically two iterations of a seed of 1.
-//
-// see <http://members.cox.net/srice1/random/random4.html>
+// Modern multicore CPUs have increasingly large caches, so the LCRNG code
+// that was previously used is not sufficiently random anymore.
+// Now using glibc's reentrant random number generator "random_r"
+// still reproducible on the same platform, although not across systems/libs.
 
-#define LCRNG_A UINT64_C(0x41c64e6d)
-#define LCRNG_B UINT64_C(0x3039)
-
-extern __thread uint64_t rng_state;
+#define RNG_BUF_SIZE 32
+extern __thread char* rng_buf;
+extern __thread struct random_data* rand_state;
 
 static inline void rng_init(unsigned thread_num)
 {
-        rng_state = (LCRNG_A + LCRNG_B)*thread_num;
+        rng_buf = (char*)calloc(1, RNG_BUF_SIZE);
+        rand_state = (struct random_data*)calloc(1, sizeof(struct random_data));
+        initstate_r(thread_num, rng_buf, RNG_BUF_SIZE, rand_state);
 }
 
-#define RNG_MODULUS (UINT64_C(1) << 32)
 static inline perm_t rng_int(perm_t limit)
 {
+        int r;
+        random_r(rand_state, &r);
         // much more uniform to use [0.,1.) multiply than use an integer modulus
-        double res = (rng_state & (RNG_MODULUS-1)) / (RNG_MODULUS*1.0);
-        rng_state = rng_state*LCRNG_A + LCRNG_B;
-        return (limit + 1) * res;
+        return (limit + 1) * (r * 1.0 / RAND_MAX);
 }
 
 #endif

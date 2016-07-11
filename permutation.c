@@ -28,7 +28,8 @@
 // XXX: declare this somewhere
 extern int verbosity;
 
-__thread uint64_t rng_state;
+__thread char* rng_buf; // buf size (32 for now) determines the "randomness"
+__thread struct random_data* rand_state; // per_thread state for random_r
 
 //============================================================================
 // a random permutation generator.  i think this algorithm is from Knuth.
