@@ -66,9 +66,10 @@ void *generate_chase(const struct generate_chase_common_args *args, size_t mixer
 // Now using glibc's reentrant random number generator "random_r"
 // still reproducible on the same platform, although not across systems/libs.
 
-// RNG_BUF_SIZE sets the size of rng_buf below, which is used by iinit_state_r
+// RNG_BUF_SIZE sets the size of rng_buf below, which is used by initstate_r
 // to decide how sophisticated a random number generator it should use: the
 // larger the state array, the better the random numbers will be.
+// 32 bytes was deemed to generate sufficient entropy.
 #define RNG_BUF_SIZE 32
 extern __thread char* rng_buf;
 extern __thread struct random_data* rand_state;
