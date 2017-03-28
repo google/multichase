@@ -31,6 +31,8 @@ static inline void cpu_relax(void) {
   // barrier()
   asm volatile("" : : : "memory");
 }
+#elif defined(__aarch64__)
+# define cpu_relax() asm volatile("yield" ::: "memory")
 #else
 #warning "no cpu_relax for your cpu"
 #define cpu_relax() do {} while (0)
