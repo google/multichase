@@ -15,6 +15,15 @@ CFLAGS=-std=gnu99 -g -O2 -fomit-frame-pointer -fno-unroll-loops -Wall -Wstrict-p
 LDFLAGS=-g -O2 -static -pthread
 LDLIBS=-lrt
 
+ARCH := $(shell uname -m)
+
+ifeq ($(ARCH),aarch64)
+ CAP := $(shell cat /proc/cpuinfo | grep atomics | head -1)
+ ifneq (,$(findstring atomics,$(CAP)))
+  CFLAGS+=-march=armv8.1-a+lse
+ endif
+endif
+
 EXE=multichase fairness pingpong
 
 all: $(EXE)
