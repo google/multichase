@@ -16,6 +16,7 @@
 
 #include <stdint.h>
 #include <stdlib.h>
+#include <assert.h>
 
 typedef uint32_t perm_t;
 
@@ -78,13 +79,14 @@ static inline void rng_init(unsigned thread_num)
 {
         rng_buf = (char*)calloc(1, RNG_BUF_SIZE);
         rand_state = (struct random_data*)calloc(1, sizeof(struct random_data));
-        initstate_r(thread_num, rng_buf, RNG_BUF_SIZE, rand_state);
+        assert(rand_state);
+        assert(initstate_r(thread_num, rng_buf, RNG_BUF_SIZE, rand_state) == 0);
 }
 
 static inline perm_t rng_int(perm_t limit)
 {
         int r;
-        random_r(rand_state, &r);
+        assert(random_r(rand_state, &r) == 0);
         // much more uniform to use [0.,1.) multiply than use an integer modulus
         return (limit + 1) * (r * 1.0 / RAND_MAX);
 }
