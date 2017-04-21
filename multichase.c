@@ -50,7 +50,7 @@
 #define DEF_TOTAL_MEMORY        ((size_t)256*1024*1024)
 #define DEF_STRIDE              ((size_t)256)
 #define DEF_NR_SAMPLES          ((size_t)5)
-#define DEF_TLB_LOCALITY        ((size_t)64*4096)
+#define DEF_TLB_LOCALITY        ((size_t)64)
 #define DEF_NR_THREADS          ((size_t)1)
 #define DEF_CACHE_FLUSH         ((size_t)64*1024*1024)
 #define DEF_OFFSET              ((size_t)0)
@@ -533,7 +533,7 @@ int main(int argc, char **argv)
 
         genchase_args.total_memory = DEF_TOTAL_MEMORY;
         genchase_args.stride = DEF_STRIDE;
-        genchase_args.tlb_locality = DEF_TLB_LOCALITY;
+        genchase_args.tlb_locality = DEF_TLB_LOCALITY * getpagesize();
         genchase_args.gen_permutation = gen_random_permutation;
 
         setvbuf(stdout, NULL, _IOLBF, BUFSIZ);
@@ -672,7 +672,7 @@ usage:
                 fprintf(stderr, "-o             perform an ordered traversal (rather than random)\n");
                 fprintf(stderr, "-O nnnn[kmg]   offset the entire chase by nnnn bytes\n");
                 fprintf(stderr, "-s nnnn[kmg]   stride size (default %zu)\n", DEF_STRIDE);
-                fprintf(stderr, "-T nnnn[kmg]   TLB locality in bytes (default %zu)\n", DEF_TLB_LOCALITY);
+                fprintf(stderr, "-T nnnn[kmg]   TLB locality in bytes (default %zu)\n", DEF_TLB_LOCALITY * getpagesize());
                 fprintf(stderr, "               NOTE: TLB locality will be rounded down to a multiple of stride\n");
                 fprintf(stderr, "-t nr_threads  number of threads (default %zu)\n", DEF_NR_THREADS);
                 fprintf(stderr, "-H             use SHM_HUGETLB for huge page allocation (if supported)\n");
