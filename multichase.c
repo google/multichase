@@ -735,6 +735,8 @@ usage:
                 printf("chase = %s\n", chase_optarg);
         }
 
+        rng_init(1);
+
         generate_chase_mixer(&genchase_args);
 
         // generate the chases by launching multiple threads
