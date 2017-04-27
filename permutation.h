@@ -85,7 +85,7 @@ static inline void rng_init(unsigned thread_num)
 
 static inline perm_t rng_int(perm_t limit)
 {
-        int r;
+        int r = 0;
         assert(random_r(rand_state, &r) == 0);
         // much more uniform to use [0.,1.) multiply than use an integer modulus
         return (limit + 1) * (r * 1.0 / RAND_MAX);
