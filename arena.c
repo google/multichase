@@ -42,7 +42,11 @@ static void arena_weighted_mbind(void *arena, size_t arena_size,
 	 * the method for determining a hit on a weight i is when the generated
 	 * random number (modulo sum of weights) <= weights_cumsum[i]
 	 */
-	int64_t weights_cumsum[nr_weights];
+	int64_t *weights_cumsum = malloc(nr_weights*sizeof(int64_t));
+	if (!weights_cumsum) {
+		fprintf(stderr, "Couldn't allocate memory for weights.\n");
+		exit(1);
+	}
 	weights_cumsum[0] = weights[0] - 1;
 	for (unsigned int i = 1; i < nr_weights; i++) {
 		weights_cumsum[i] = weights_cumsum[i-1] + weights[i];
@@ -68,6 +72,7 @@ static void arena_weighted_mbind(void *arena, size_t arena_size,
 		}
 		*p = 0;
 	}
+	free(weights_cumsum);
 }
 
 void *alloc_arena_mmap(size_t arena_size)
