@@ -72,6 +72,7 @@ static void arena_weighted_mbind(void *arena, size_t arena_size,
 		}
 		*p = 0;
 	}
+	free(weights_cumsum);
 }
 
 void *alloc_arena_mmap(size_t arena_size)
