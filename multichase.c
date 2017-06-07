@@ -25,12 +25,15 @@
 #include <unistd.h>
 #include <sched.h>
 
+#include "third_party/hdr_histogram.h"
+
 #include "cpu_util.h"
 #include "timer.h"
 #include "expand.h"
 #include "permutation.h"
 #include "arena.h"
 #include "util.h"
+
 
 // The total memory, stride, and TLB locality have been chosen carefully for
 // the current generation of CPUs:
@@ -75,6 +78,7 @@ typedef union {
         struct {
                 unsigned thread_num;            // which thread is this
                 unsigned count;                 // count of number of iterations
+                struct hdr_histogram *thread_histogram;
                 void *cycle[MAX_PARALLEL];      // initial address for the chases
                 const char *extra_args;
                 int dummy;                      // useful for confusing the compiler
@@ -87,6 +91,7 @@ typedef union {
         } x;
 } per_thread_t;
 
+static pthread_spinlock_t g_spin;
 
 int always_zero;
 
@@ -95,7 +100,13 @@ static void chase_simple(per_thread_t *t)
         void *p = t->x.cycle[0];
 
         do {
+		uint64_t cur_sample_time = now_nsec();
                 x200(p = *(void **)p;)
+		uint64_t delta_time_ns = now_nsec() - cur_sample_time;
+		double res = delta_time_ns / 200.0;
+                pthread_spin_lock(&g_spin);
+		hdr_record_value(t->x.thread_histogram, res * 1000);
+		pthread_spin_unlock(&g_spin);
         } while (__sync_add_and_fetch(&t->x.count, 200));
 
         // we never actually reach here, but the compiler doesn't know that
@@ -747,7 +758,7 @@ usage:
                 flush_arena = alloc_arena_mmap(cache_flush_size);
                 memset(flush_arena, 1, cache_flush_size); // ensure pages are mapped
         }
-
+	pthread_spin_init(&g_spin, 0);
         pthread_t thread;
         nr_to_startup = nr_threads;
         for (i = 0; i < nr_threads; ++i) {
@@ -758,6 +769,9 @@ usage:
                 thread_data[i].x.chase = chase;
                 thread_data[i].x.flush_arena = flush_arena;
                 thread_data[i].x.cache_flush_size = cache_flush_size;
+		struct hdr_histogram *thread_histogram;
+		hdr_init(1, 1000000000, 3, &thread_histogram);
+		thread_data[i].x.thread_histogram = thread_histogram;
                 if (pthread_create(&thread, NULL, thread_start, &thread_data[i])) {
                         perror("pthread_create");
                         exit(1);
@@ -777,12 +791,17 @@ usage:
         uint64_t last_sample_time = now_nsec();
         double best = 1./0.;
         double running_sum = 0.;
+        struct hdr_histogram *histogram;
+        hdr_init(1, 1000000000, 3, &histogram);
         if (verbosity > 0) printf("samples (one column per thread, one row per sample):\n");
         for (size_t sample_no = 0; nr_samples == 1 || sample_no < nr_samples; ++sample_no) {
                 usleep(500000);
 
                 uint64_t sum = 0;
                 for (i = 0; i < nr_threads; ++i) {
+		        pthread_spin_lock(&g_spin);
+			hdr_add(histogram, thread_data[i].x.thread_histogram);
+			pthread_spin_unlock(&g_spin);
                         cur_samples[i] = __sync_lock_test_and_set(&thread_data[i].x.count, 0);
                         sum += cur_samples[i];
                 }
@@ -823,7 +842,8 @@ usage:
           res = best * nr_threads;
         }
         printf("%6.*f\n", res < 100. ? 3 : 1, res);
-
+        hdr_percentiles_print(histogram, stdout, 5, 1000.0, CLASSIC);
+        free(histogram);
         exit(0);
 
         return 0;
