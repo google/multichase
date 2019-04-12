@@ -94,7 +94,7 @@ static inline perm_t rng_int(perm_t limit)
                 exit(1);
         }
         // much more uniform to use [0.,1.) multiply than use an integer modulus
-        return (limit + 1) * (r * 1.0 / RAND_MAX);
+        return (limit + 1) * (r / (RAND_MAX + 1.0));
 }
 
 #endif
