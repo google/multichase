@@ -1,4 +1,5 @@
 Multichase - a pointer chaser benchmark
+Multiload - a superset of multichase which runs latency, memory bandwidth, and loaded-latency
 
 1/ BUILD
 
@@ -10,7 +11,11 @@ Multichase - a pointer chaser benchmark
 
    - just run from current directory or copy multichase wherever you need to
 
-3/ RUN
+3.1/ RUN Multichase
+
+  - To get help
+
+    $ multichase -h
 
    - By default, multichase will perform a pointer chase through an array
      size of 256MB and a stride size of 256 bytes for 2.5 seconds on a single
@@ -32,6 +37,31 @@ Multichase - a pointer chaser benchmark
 
     $ multichase -m 256k -s 128 -t 2
 
+3.2/ RUN Multiload
+
+  - Latency Only (simple pointer chase)
+    In this mode, Multiload can run any of the multichase commands above.
+    A "-c" chase arg (other than chaseload) can be used or it will default to "simple".
+    Using either "-c chaseload" and/or the "-l" load arguments will choose a different test mode.
+
+    $ multiload
+
+  - Bandwidth Only
+    Multiload can run a memory bandwidth test using the "-l" load argument. The "-c" chase argument MUST NOT be used.
+    Below command runs 5 samples (~2.5 seconds each), using 16 threads, using the glibc memcpy() function,
+    using a 512M buffer per thread.
+
+    $ multiload -n 5 -t 16 -m 512M -l memcpy-libc
+
+  - Loaded Latency.
+    Multiload can run 1 pointer chaser thread on logical cpu0 with multiple memory bandwidth load threads.
+    The "-c chaseload" arg MUST be used. The "-l" arg MUST be used with one of the memory load arguments.
+    Below command runs 5 samples (~2.5 seconds each), on 16 threads (1 chase, 15 stream-sum bandwidth loads),
+    using a 512M buffer per thread. The chase thread uses a stride=16.
+
+    $ multiload -s 16 -n 5 -t 16 -m 512M -c chaseload -l stream-sum
+
+3.3/ RUN Pingpong & fairness
 
    - Pingpong: measure latency of exchanging a line between cores.
      To run, simply do:
