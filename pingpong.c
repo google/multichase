@@ -29,6 +29,7 @@
 #define SAMPLE_US       (250000)
 
 static size_t nr_relax = 10;
+static size_t nr_tested_cores = ~0;
 
 typedef unsigned atomic_t;
 
@@ -176,7 +177,7 @@ int main(int argc, char **argv)
   int c;
   char *p;
 
-  while ((c = getopt(argc, argv, "lur:xs:")) != -1) {
+  while ((c = getopt(argc, argv, "c:lur:xs:")) != -1) {
     switch (c) {
     case 'l':
       if (thread_fn) goto thread_fn_error;
@@ -194,6 +195,13 @@ int main(int argc, char **argv)
       nr_relax = strtoul(optarg, &p, 0);
       if (*p) {
         fprintf(stderr, "-r requires a numeric argument\n");
+        exit(1);
+      }
+      break;
+    case 'c':
+      nr_tested_cores = strtoul(optarg, &p, 0);
+      if (*p) {
+        fprintf(stderr, "-c requires a numeric argument\n");
         exit(1);
       }
       break;
@@ -251,7 +259,7 @@ thread_fn_error:
   }
   printf("\n");
 
-  for (size_t i = 0; i < last_cpu; ++i) {
+  for (size_t i = 0; i < last_cpu && i < nr_tested_cores; ++i) {
     if (!CPU_ISSET(i, &cpus)) {
       continue;
     }
