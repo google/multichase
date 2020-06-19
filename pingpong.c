@@ -259,10 +259,11 @@ thread_fn_error:
   }
   printf("\n");
 
-  for (size_t i = 0; i < last_cpu && i < nr_tested_cores; ++i) {
+  for (size_t i = 0, core = 0; i < last_cpu && core < nr_tested_cores; ++i) {
     if (!CPU_ISSET(i, &cpus)) {
       continue;
     }
+    ++core;
     thread_args_t even;
     CPU_ZERO(&even.cpus);
     CPU_SET(i, &even.cpus);
