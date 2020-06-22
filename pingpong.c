@@ -217,7 +217,9 @@ int main(int argc, char **argv)
       }
       break;
     default:
-      fprintf(stderr, "usage: %s [-l | -u | -x] [-r nr_relax] [-s nr_array_elts_to_dirty]\n", argv[0]);
+      fprintf(stderr,
+              "usage: %s [-l | -u | -x] [-r nr_relax] [-s nr_array_elts_to_dirty] [-c nr_tested_cores]\n",
+              argv[0]);
       exit(1);
     }
   }
