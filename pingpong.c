@@ -29,6 +29,7 @@
 #define SAMPLE_US       (250000)
 
 static size_t nr_relax = 10;
+static size_t nr_tested_cores = ~0;
 
 typedef unsigned atomic_t;
 
@@ -176,7 +177,7 @@ int main(int argc, char **argv)
   int c;
   char *p;
 
-  while ((c = getopt(argc, argv, "lur:xs:")) != -1) {
+  while ((c = getopt(argc, argv, "c:lur:xs:")) != -1) {
     switch (c) {
     case 'l':
       if (thread_fn) goto thread_fn_error;
@@ -197,6 +198,13 @@ int main(int argc, char **argv)
         exit(1);
       }
       break;
+    case 'c':
+      nr_tested_cores = strtoul(optarg, &p, 0);
+      if (*p) {
+        fprintf(stderr, "-c requires a numeric argument\n");
+        exit(1);
+      }
+      break;
     case 's':
       nr_array_elts = strtoul(optarg, &p, 0);
       if (*p) {
@@ -209,7 +217,9 @@ int main(int argc, char **argv)
       }
       break;
     default:
-      fprintf(stderr, "usage: %s [-l | -u | -x] [-r nr_relax] [-s nr_array_elts_to_dirty]\n", argv[0]);
+      fprintf(stderr,
+              "usage: %s [-l | -u | -x] [-r nr_relax] [-s nr_array_elts_to_dirty] [-c nr_tested_cores]\n",
+              argv[0]);
       exit(1);
     }
   }
@@ -251,10 +261,11 @@ thread_fn_error:
   }
   printf("\n");
 
-  for (size_t i = 0; i < last_cpu; ++i) {
+  for (size_t i = 0, core = 0; i < last_cpu && core < nr_tested_cores; ++i) {
     if (!CPU_ISSET(i, &cpus)) {
       continue;
     }
+    ++core;
     thread_args_t even;
     CPU_ZERO(&even.cpus);
     CPU_SET(i, &even.cpus);
