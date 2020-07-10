@@ -11,9 +11,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-CFLAGS=-std=gnu99 -g -O2 -fomit-frame-pointer -fno-unroll-loops -Wall -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wmissing-declarations -Wnested-externs -Wpointer-arith -W -Wno-unused-parameter -Werror -pthread -Wno-tautological-compare
-LDFLAGS=-g -O2 -static -pthread
-LDLIBS=-lrt
+CFLAGS=-std=gnu99  -g -O3 -fomit-frame-pointer -fno-unroll-loops -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wmissing-declarations -Wnested-externs -Wpointer-arith -W -Wno-unused-parameter -Werror -pthread -Wno-tautological-compare
+LDFLAGS=-g -O3 -static -pthread
+LDLIBS=-lrt -lm
 
 ARCH := $(shell uname -m)
 
@@ -24,7 +24,7 @@ ifeq ($(ARCH),aarch64)
  endif
 endif
 
-EXE=multichase fairness pingpong
+EXE=multichase multiload fairness pingpong
 
 all: $(EXE)
 
@@ -35,6 +35,8 @@ clean:
 	$(CC) $(CFLAGS) -S -c $<
 
 multichase: multichase.o permutation.o arena.o util.o
+
+multiload: multiload.o permutation.o arena.o util.o
 
 fairness: LDLIBS += -lm
 
@@ -49,6 +51,7 @@ depend:
 
 arena.o: arena.h
 multichase.o: cpu_util.h timer.h expand.h permutation.h arena.h util.h
+multiload.o: cpu_util.h timer.h expand.h permutation.h arena.h util.h
 permutation.o: permutation.h
 util.o: util.h
 fairness.o: cpu_util.h expand.h timer.h
