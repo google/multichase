@@ -23,11 +23,11 @@ log_without_date(){
 # Test configuration variables
 ################################################################################
 RUN_TEST_TYPE=2     # 0=latency only, 1=load only, 2=loaded latency
-ITERATIONS=3        # Number of times the program is run. Due to "Samples" above, reliable data can typically be had with only 1 iteration. 
+ITERATIONS=3        # Number of times the program is run. Due to "Samples" above, reliable data can typically be had with only 1 iteration.
 SAMPLES=5           # Specfies the number of data samples taken during a single run of mulitiload
                     # ~2sec per sample + 4sec warmup. Duration depends on LOAD_DELAY_* defines in multiload.c
-                    # Default is to return the best latency of the samples. Command "-a" can be used to return the average. 
-SOCKET_EVAL=1		# 1=1P testing on a 2P system. 2=2P testing on a 2P system. Does not apply to a Non-Numa system. 
+                    # Default is to return the best latency of the samples. Command "-a" can be used to return the average.
+SOCKET_EVAL=1                # 1=1P testing on a 2P system. 2=2P testing on a 2P system. Does not apply to a Non-Numa system.
 USE_REMOTE_MEMNODE=0  # Numactl only: 0= use localalloc, 1=force SOCKET_EVAL=1 and use remote memory (ie. 2nd half of the numa nodes)
 THREAD_AFFINITY_ENABLED=1  # enables use of tasket/numactl for thread control
 MPSTAT_PROFILE_ENABLE=0     #enables mpstat data collection
@@ -98,23 +98,23 @@ fi
 RUN_CHASE=0
 RUN_BANDWIDTH=1
 RUN_CHASE_LOADED=2
-if [ $RUN_TEST_TYPE = $RUN_CHASE ]; then 
-    PSTEP_START=1		# Parallel thread start value when running thread scaling tests. 
-    PSTEP_INC=4 		# Parallel thread steps when running thread scaling tests. 
-    PSTEP_END=512         # Will be reduced to CPUTHREADS if CPUTHREADS < PSTEP_END. 
+if [ $RUN_TEST_TYPE = $RUN_CHASE ]; then
+    PSTEP_START=1                # Parallel thread start value when running thread scaling tests.
+    PSTEP_INC=4                 # Parallel thread steps when running thread scaling tests.
+    PSTEP_END=512         # Will be reduced to CPUTHREADS if CPUTHREADS < PSTEP_END.
     CHASE_ALGORITHM="simple"
     LOAD_ALGORITHM_LIST="none"
-    RAND_STRIDE=16      #lmbench latmemrd uses 16 for simple chase. Other chase/mem sizes may need to be bigger (ie. 512). 
+    RAND_STRIDE=16      #lmbench latmemrd uses 16 for simple chase. Other chase/mem sizes may need to be bigger (ie. 512).
     BUFLIST_TYPE=0       # 0=Use MEM_SIZE* to create a memory list, 1=use buflist_custom
     let MEM_SIZE_END_B=1*1024*1024*1024
     let MEM_SIZE_START_B=4*1024
     #let MEM_SIZE_START_B=MEM_SIZE_END_B
     buflist_custom=( $((32*1024)) $((512*1024)) $((16*1024*1024)) $((1*1024*1024*1024)) )     # 64K / 1M / 32M caches
 
-elif [ $RUN_TEST_TYPE = $RUN_BANDWIDTH ]; then 
-    PSTEP_START=1		# Parallel thread start value when running thread scaling tests. 
-    PSTEP_INC=4 		# Parallel thread steps when running thread scaling tests. 
-    PSTEP_END=512       # Will be reduced to CPUTHREADS if CPUTHREADS < PSTEP_END. 
+elif [ $RUN_TEST_TYPE = $RUN_BANDWIDTH ]; then
+    PSTEP_START=1                # Parallel thread start value when running thread scaling tests.
+    PSTEP_INC=4                 # Parallel thread steps when running thread scaling tests.
+    PSTEP_END=512       # Will be reduced to CPUTHREADS if CPUTHREADS < PSTEP_END.
     CHASE_ALGORITHM="none"
     LOAD_ALGORITHM_LIST="memcpy-libc memset-libc memsetz-libc stream-sum stream-triad"
     RAND_STRIDE=16       #not used for bandwidth test
@@ -124,13 +124,13 @@ elif [ $RUN_TEST_TYPE = $RUN_BANDWIDTH ]; then
     let MEM_SIZE_START_B=MEM_SIZE_END_B
     buflist_custom=( $((32*1024)) $((512*1024)) $((16*1024*1024)) $((1*1024*1024*1024)) )     # 64K / 1M / 32M caches
 
-elif [ $RUN_TEST_TYPE = $RUN_CHASE_LOADED ]; then 
-    PSTEP_START=1		# Parallel thread start value when running thread scaling tests. 
-    PSTEP_INC=4 		# Parallel thread steps when running thread scaling tests. 
-    PSTEP_END=512       # Will be reduced to CPUTHREADS if CPUTHREADS < PSTEP_END. 
+elif [ $RUN_TEST_TYPE = $RUN_CHASE_LOADED ]; then
+    PSTEP_START=1                # Parallel thread start value when running thread scaling tests.
+    PSTEP_INC=4                 # Parallel thread steps when running thread scaling tests.
+    PSTEP_END=512       # Will be reduced to CPUTHREADS if CPUTHREADS < PSTEP_END.
     CHASE_ALGORITHM="chaseload"
     LOAD_ALGORITHM_LIST="memcpy-libc memset-libc memsetz-libc stream-sum stream-triad"
-    RAND_STRIDE=16       #lmbench latmemrd uses 16 for simple chase. Other chase/mem sizes may need to be bigger (ie. 512). 
+    RAND_STRIDE=16       #lmbench latmemrd uses 16 for simple chase. Other chase/mem sizes may need to be bigger (ie. 512).
     BUFLIST_TYPE=0       # 0=Use MEM_SIZE* to create a memory list, 1=use buflist_custom
     let MEM_SIZE_END_B=1*1024*1024*1024
     #let MEM_SIZE_START_B=4*1024
@@ -168,44 +168,44 @@ profiling_end(){
         ( kill $vmstat_pid &> /dev/null ) &
         wait $vmstat_pid &> /dev/null
     fi
-}    
+}
 
 get_hardware_config ()
 {
-	log_without_date " "
-	numactl --hardware | tee -a ${LOG_FILE} 		# display current NUMA & memory setup
-	log_without_date " "
+        log_without_date " "
+        numactl --hardware | tee -a ${LOG_FILE}                 # display current NUMA & memory setup
+        log_without_date " "
 
-	phycore_num=`lscpu | grep "Core(s) per socket" | tr -d ' ' | cut -d':' -f2 2> /dev/null`
-	core_threads=`lscpu | grep "Thread(s) per core:" | tr -d ' ' | cut -d':' -f2 2> /dev/null`
-	cputhread_num=`lscpu | grep "CPU(s):            " | tr -d ' ' | cut -d ':' -f2 2> /dev/null`
-	numa_num=`lscpu | grep "NUMA node(s)" | tr -d ' ' | cut -d':' -f2 2> /dev/null`
-	socket_num=`lscpu | grep "Socket(s)" | tr -d ' ' | cut -d':' -f2 2> /dev/null`
+        phycore_num=`lscpu | grep "Core(s) per socket" | tr -d ' ' | cut -d':' -f2 2> /dev/null`
+        core_threads=`lscpu | grep "Thread(s) per core:" | tr -d ' ' | cut -d':' -f2 2> /dev/null`
+        cputhread_num=`lscpu | grep "CPU(s):            " | tr -d ' ' | cut -d ':' -f2 2> /dev/null`
+        numa_num=`lscpu | grep "NUMA node(s)" | tr -d ' ' | cut -d':' -f2 2> /dev/null`
+        socket_num=`lscpu | grep "Socket(s)" | tr -d ' ' | cut -d':' -f2 2> /dev/null`
     MEMBIND_LIST=`numactl --show 2> /dev/null | grep membind | cut -d':' -f2 2> /dev/null`
-   	let phycore_end=$phycore_num-1
-	let ht_threads=$phycore_num*$core_threads
+           let phycore_end=$phycore_num-1
+        let ht_threads=$phycore_num*$core_threads
     #echo "get_hardware_config: phyend=$phycore_end, ht_t=$ht_threads"
 
-	if [ -z $cputhread_num ]; then
-		log_without_date "Can't find the CPU(s) core count, exiting"
-		exit $?
-	else
-		CPUTHREADS=$cputhread_num
-	fi
+        if [ -z $cputhread_num ]; then
+                log_without_date "Can't find the CPU(s) core count, exiting"
+                exit $?
+        else
+                CPUTHREADS=$cputhread_num
+        fi
 
     log "Found the following hardware:"
-	log_without_date "  sockets         = $socket_num"
-	log_without_date "  physical cores  = $phycore_num"
-	log_without_date "  threads per core= $core_threads"
-	log_without_date "  logical threads = $cputhread_num"
-	if [ -z "$numa_num" ]; then
-		NUMA_NODES=1
-	    log_without_date "  NUMA nodes      = none found"
-	else
-		NUMA_NODES=$numa_num
-	    log_without_date "  NUMA nodes      = $NUMA_NODES"
-	fi
-  
+        log_without_date "  sockets         = $socket_num"
+        log_without_date "  physical cores  = $phycore_num"
+        log_without_date "  threads per core= $core_threads"
+        log_without_date "  logical threads = $cputhread_num"
+        if [ -z "$numa_num" ]; then
+                NUMA_NODES=1
+            log_without_date "  NUMA nodes      = none found"
+        else
+                NUMA_NODES=$numa_num
+            log_without_date "  NUMA nodes      = $NUMA_NODES"
+        fi
+
     if [ $USE_REMOTE_MEMNODE == "1" ] && [ $NUMA_NODES -gt "1" ] && [ $THREAD_AFFINITY_ENABLED == "1" ]; then
         SOCKET_EVAL=1
         if [ $numa_num == "2" ]; then
@@ -214,7 +214,7 @@ get_hardware_config ()
             NODE_MEMBIND="2,3"
         elif [ $numa_num == "8" ]; then
             NODE_MEMBIND="4,5,6,7"
-        else 
+        else
             NODE_MEMBIND="0"
         fi
     fi
@@ -228,14 +228,14 @@ get_hardware_config ()
     fi
 
     if [ $PSTEP_END -gt $CPUTHREADS ]; then
-	    PSTEP_END=$CPUTHREADS
+            PSTEP_END=$CPUTHREADS
     fi
 }
 
 duration(){    # calculates duration in secs
     duration=$SECONDS
     log_without_date
-	log "$1 runtime: $(($duration / 3600)) hrs, $((($duration % 3600) / 60)) mins, $(($duration % 60)) secs"
+        log "$1 runtime: $(($duration / 3600)) hrs, $((($duration % 3600) / 60)) mins, $(($duration % 60)) secs"
 }
 
 #converts an array into string and deletes spaces (can also add delimiters using $1)
@@ -243,7 +243,7 @@ join_ws() { local d=$1 s=$2; shift 2 && printf %s "$s${@/#/$d}"; }
 
 create_taskset_cpulist_x86_64()
 {
-    let cpu_max_4bits=$1/4+1           #need +1 in case cputhreads is not a multiple of 4. 
+    let cpu_max_4bits=$1/4+1           #need +1 in case cputhreads is not a multiple of 4.
     #create base string arrays
     for (( cpu=0; cpu<cpu_max_4bits; cpu++ ));
         do
@@ -267,7 +267,7 @@ create_taskset_cpulist_x86_64()
             cpulist+=("$thds")
             let idx=idx-1
         done
-    #for i in "${cpulist[@]}"; 
+    #for i in "${cpulist[@]}";
     #    do
     #        echo "$i"
     #    done
@@ -276,8 +276,8 @@ create_taskset_cpulist_x86_64()
 create_taskset_cpulist_arm64()
 {
     cc=$1
-    cpu_max_4bits_rem=$( expr ${cc} % 4 )       #in case its not a multiple of 4. 
-    let cpu_max_4bits=$cc/4 
+    cpu_max_4bits_rem=$( expr ${cc} % 4 )       #in case its not a multiple of 4.
+    let cpu_max_4bits=$cc/4
     #echo "4b=$cpu_max_4bits, 4br=$cpu_max_4bits_rem"
 
     #create base string arrays
@@ -337,16 +337,16 @@ create_taskset_cpulist_arm64()
     fi
     #echo "--------------"
 
-    #for i in "${cpulist[@]}"; 
+    #for i in "${cpulist[@]}";
     #    do
     #        echo "$i"
     #    done
 }
 
 create_numactl_cpulist_x86_64(){
-    let phycore_end=phycore_num*SOCKET_EVAL-1       
-    let ht_thread_start=phycore_num*socket_num      
-    let ht_thread_end=ht_thread_start+phycore_end  
+    let phycore_end=phycore_num*SOCKET_EVAL-1
+    let ht_thread_start=phycore_num*socket_num
+    let ht_thread_end=ht_thread_start+phycore_end
     #echo "SOCKET_EVAL=$SOCKET_EVAL, Available cpus are: -C 0-$phycore_end,$ht_thread_start-$ht_thread_end, cputhread_num=$cputhread_num, request=$1"
     if [ $1 -gt $cputhread_num ]; then
         echo "ERROR: $1 is too many threads, Max CPU threads allowed is $cputhread_num"
@@ -359,17 +359,17 @@ create_numactl_cpulist_x86_64(){
                 let cpu_bind_end=$cpu-phycore_end+ht_thread_start-1
                 stream_bind=0-${phycore_end},${ht_thread_start}-${cpu_bind_end}
                 cpulist+=("$stream_bind")
-                #echo "Using hyperthreads: -C $stream_bind" 
+                #echo "Using hyperthreads: -C $stream_bind"
             else
                 stream_bind=0-${cpu}
                 cpulist+=("$stream_bind")
-                #echo "Using threads: -C $stream_bind" 
+                #echo "Using threads: -C $stream_bind"
             fi
         done
 }
 
 create_numactl_cpulist_arm64(){
-	#echo "FIXME: early arm designs need every other cpu alogithm to test non-shared L2 followed by shared L2" 
+        #echo "FIXME: early arm designs need every other cpu alogithm to test non-shared L2 followed by shared L2"
     create_numactl_cpulist_x86_64 $1
 }
 
@@ -379,19 +379,19 @@ create_thdlist()
     #echo "create_thdlist start=$thdtemp, end=$PSTEP_END, by $PSTEP_INC"
 
     thdcount_testlist+=($thdtemp)
-	if [ $thdtemp -eq "1" ]; then	
-		if [ $PSTEP_INC -eq "1" ]; then
-			let thdtemp=2
-		else 
-			let thdtemp=PSTEP_INC
-		fi
-	else
-		let thdtemp=thdtemp+PSTEP_INC
-	fi    
+        if [ $thdtemp -eq "1" ]; then
+                if [ $PSTEP_INC -eq "1" ]; then
+                        let thdtemp=2
+                else
+                        let thdtemp=PSTEP_INC
+                fi
+        else
+                let thdtemp=thdtemp+PSTEP_INC
+        fi
 
     while [ "$thdtemp" -le "$PSTEP_END" ] ; do
         thdcount_testlist+=($thdtemp)
-		let thdtemp=thdtemp+PSTEP_INC
+                let thdtemp=thdtemp+PSTEP_INC
     done
 }
 
@@ -403,7 +403,7 @@ create_buffer_list_by_2x()
     #echo "create_buffer_list_by_2x size=$size, end=$MEM_SIZE_END_B"
 
     while [ "$size" -lt "$MEM_SIZE_END_B" ] ; do
-        size=$((size*2))   
+        size=$((size*2))
         bufsize_testlist+=($size)
     done
 }
@@ -416,9 +416,9 @@ create_buffer_list_lmbench()
     #echo "create_buffer_list_lmbench, start=$size, end=$MEM_SIZE_END_B bytes"
 
     while [ "$size" -lt "$MEM_SIZE_END_B" ] ; do
-        if [ "$size" -lt "1024" ]; then 
+        if [ "$size" -lt "1024" ]; then
             let size=$((size*2))
-        elif [ "$size" -lt "4096" ]; then 
+        elif [ "$size" -lt "4096" ]; then
             let size=size+1024
         else
             for (( temps=4096; temps<=size; temps=temps*2 ));
@@ -444,7 +444,7 @@ run_test(){
     log "Starting ${1} run..."
     SECONDS=0
         for a in $LOAD_ALGORITHM_LIST; do
-            if [ "$a" == "none" ]; then 
+            if [ "$a" == "none" ]; then
                 LOAD_COMMAND=""
             else
                 LOAD_COMMAND="-l ${a}"
@@ -469,9 +469,9 @@ run_test(){
                             log "Run iter $i/$ITERATIONS, numactl ${MEMBIND_COMMAND} -C ${cpulist[$t-1]} $BASE_MULTILOAD_CMD -t $t -m $j ${LOAD_COMMAND}"
                             numactl ${MEMBIND_COMMAND} -C ${cpulist[$t-1]} ${BASE_MULTILOAD_CMD} -t $t -m $j ${LOAD_COMMAND} | tee -a ${OUTPUT_DIR}/$FILENAME.txt 2>&1
                         done
-                    fi 
-                    profiling_end &> /dev/null           
-                    duration "Total" 
+                    fi
+                    profiling_end &> /dev/null
+                    duration "Total"
                 done
             done
         done
@@ -482,7 +482,7 @@ parse(){
     rm -f out.txt
     while IFS= read -r line; do
         #Only keep 1st header line
-        if [ "$first" -eq "1" ]; then 
+        if [ "$first" -eq "1" ]; then
             echo "$line" > out.txt
             first=0
         elif [[ ! $line =~ "ample" ]]; then
@@ -504,7 +504,7 @@ if [ $BUFLIST_TYPE == "0" ]; then
     create_buffer_list_lmbench
 else
     create_buffer_list_custom
-fi        
+fi
 
 if [ $CHASE_ALGORITHM == "none" ]; then
     BASE_MULTILOAD_CMD="${BINDIR}/multiload -s ${RAND_STRIDE} -T 16g -n ${SAMPLES}"
@@ -515,28 +515,28 @@ else
 fi
 if [ $USE_REMOTE_MEMNODE == "1" ] && [ $NUMA_NODES -gt "1" ] && [ $THREAD_AFFINITY_ENABLED == "1" ]; then
     FILENAME="${FILENAME}_REMOTE"
-fi    
+fi
 LOG_VMSTATS_FILE="${OUTPUT_DIR}/multiload_${DATE}_${HOSTNAME}_vmstats.log"
 LOG_MPSTATS_FILE="${OUTPUT_DIR}/multiload_${DATE}_${HOSTNAME}_mpstats.log"
 mpstat_pid=""
 vmstat_pid=""
 
 log_without_date "Test Parameters"
-log_without_date "  Date: $DATE" 
+log_without_date "  Date: $DATE"
 log_without_date "  Output Directory: $OUTPUT_DIR"
-log_without_date "  Data File: $FILENAME.txt"  
-log_without_date "  Data File: $FILENAME.csv"  
-log_without_date "  Log File: $LOG_FILE"  
+log_without_date "  Data File: $FILENAME.txt"
+log_without_date "  Data File: $FILENAME.csv"
+log_without_date "  Log File: $LOG_FILE"
 if [ $MPSTAT_PROFILE_ENABLE -eq 1 ]; then
-    log_without_date "  Stat File: $LOG_MPSTATS_FILE"  
-fi    
+    log_without_date "  Stat File: $LOG_MPSTATS_FILE"
+fi
 if [ $VMSTAT_PROFILE_ENABLE -eq 1 ]; then
-    log_without_date "  Stat File: $LOG_VMSTATS_FILE"  
-fi    
-log_without_date "  Iterations: $ITERATIONS"  
+    log_without_date "  Stat File: $LOG_VMSTATS_FILE"
+fi
+log_without_date "  Iterations: $ITERATIONS"
 log_without_date "  Thread List: $( echo "${thdcount_testlist[@]}" )"
 log_without_date "  Mem Buf List: $( echo "${bufsize_testlist[@]}" )"
-log_without_date "  Random Stride: $RAND_STRIDE"  
+log_without_date "  Random Stride: $RAND_STRIDE"
 if [ "$THREAD_AFFINITY_ENABLED" == "0" ]; then
     log_without_date "  Thread affinity disabled"
     run_test "Thread affinity disabled"
@@ -546,26 +546,26 @@ elif [ "$NUMA_NODES" == "1" ] ; then
         create_taskset_cpulist_x86_64 $CPUTHREADS
     else
         create_taskset_cpulist_arm64 $CPUTHREADS
-    fi    
+    fi
     run_test "NUMA=${NUMA_NODES}"
 else
     if [ "$ARCH" == "x86_64" ] ; then
-        create_numactl_cpulist_x86_64 $CPUTHREADS 
+        create_numactl_cpulist_x86_64 $CPUTHREADS
     else
-        create_numactl_cpulist_arm64 $CPUTHREADS                
-    fi  
+        create_numactl_cpulist_arm64 $CPUTHREADS
+    fi
     if [ $USE_REMOTE_MEMNODE == "1" ]; then
-        #MEMBIND_COMMAND="-m ${NODE_MEMBIND}"			# --membind causes allocation to start on the 1st node, then the next so limited to 1 node of DDR bandwidth. 
+        #MEMBIND_COMMAND="-m ${NODE_MEMBIND}"                        # --membind causes allocation to start on the 1st node, then the next so limited to 1 node of DDR bandwidth.
         #MEMBIND_COMMAND_TEXT="m${NODE_MEMBIND}"
-        MEMBIND_COMMAND="-i ${NODE_MEMBIND}"			# --interleave does round robin allocation between the nodes giving higher DDR bandwidth for multiple nodes.
+        MEMBIND_COMMAND="-i ${NODE_MEMBIND}"                        # --interleave does round robin allocation between the nodes giving higher DDR bandwidth for multiple nodes.
         MEMBIND_COMMAND_TEXT="i${NODE_MEMBIND}"
     else
-        MEMBIND_COMMAND="--localalloc"					# localalloc allocates in same node as the process or thread calling a malloc() function
+        MEMBIND_COMMAND="--localalloc"                                        # localalloc allocates in same node as the process or thread calling a malloc() function
         MEMBIND_COMMAND_TEXT="localalloc"
     fi
-    log_without_date "  Numa runs: Yes"  
-    log_without_date "  Numa nodes: $MEMBIND_LIST" 
-    log_without_date "  Remote Memory: USE_REMOTE_MEMNODE=$USE_REMOTE_MEMNODE, MEMBIND_COMMAND=$MEMBIND_COMMAND" 
+    log_without_date "  Numa runs: Yes"
+    log_without_date "  Numa nodes: $MEMBIND_LIST"
+    log_without_date "  Remote Memory: USE_REMOTE_MEMNODE=$USE_REMOTE_MEMNODE, MEMBIND_COMMAND=$MEMBIND_COMMAND"
     log_without_date "  Socket eval: Testing cores from $SOCKET_EVAL out of $socket_num sockets"
     run_test "NUMA=${NUMA_NODES}"
 fi
