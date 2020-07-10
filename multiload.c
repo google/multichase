@@ -441,7 +441,7 @@ chase_prefetch(nta)
 #define LOAD_MEMORY_INIT_MIBPS                                                                                          \
         register uint64_t loops =0;                                                                                     \
         size_t cur_sample=-1, nxt_sample=0;                                                                             \
-        double time0, time1, timetot, timetot_sum=0;                                                                    \
+        double time0, time1, timetot;                                                                    \
         double bite_sum=0, mibps=0;           /*mibps = MiB per sec.*/                                                  \
         time0 = (double)now_nsec();
 
@@ -466,7 +466,7 @@ chase_prefetch(nta)
                 time0 = (double)now_nsec();                                                                             \
         }
 
-static void load_chase_simple(per_thread_t *t)
+/*static void load_chase_simple(per_thread_t *t)
 {
         #define LOOP_OPS    1
         void *p = t->x.cycle[0];
@@ -481,7 +481,7 @@ static void load_chase_simple(per_thread_t *t)
 
         // we never actually reach here, but the compiler doesn't know that
         t->x.dummy = (uintptr_t)p;
-}
+}*/
 
 //--------------------------------------------------------------------------------------------------------
 static void load_memcpy_libc(per_thread_t *t)
@@ -540,20 +540,19 @@ static void load_stream_triad(per_thread_t *t)
         #define LOOP_OPS    3
         #define LOOP_ALIGN 16
         uint64_t load_loop, load_bites;
-	register uint64_t N, i;
-	register double* a;
-	register double* b;
-	register double* c;
+        register uint64_t N, i;
+        register double* a;
+        register double* b;
+        register double* c;
         register double* tmp;
-        register double scalar = 3.0;
 
         load_loop = t->x.load_total_memory - (LOOP_OPS * LOOP_ALIGN);         // subract to allow aligning count/addresses
         load_loop = (load_loop / LOOP_OPS) & ~(LOOP_ALIGN-1);                 // divide by 3 buffers and align byte count on LOOP_ALIGN byte multiple
-	N = load_loop / sizeof(double);
+        N = load_loop / sizeof(double);
         load_bites = N * sizeof(double) * LOOP_OPS;
-	size_t aa = ( ((size_t)t->x.load_arena + LOOP_ALIGN) & ~(LOOP_ALIGN) );     // align on 16 byte address
+        size_t aa = ( ((size_t)t->x.load_arena + LOOP_ALIGN) & ~(LOOP_ALIGN) );     // align on 16 byte address
         a = (double*)aa;
-	b = a + N;
+        b = a + N;
         c = b + N;
         if (verbosity > 1) {
                 printf("load_arena=%p, load_total_memory=0x%lX, load_loop=0x%lX, N=0x%lX, a=%p, b=%p, c=%p\n", (char*)t->x.load_arena, t->x.load_total_memory, load_loop, N, a, b, c);
@@ -580,11 +579,11 @@ static void load_stream_copy(per_thread_t *t)
 {
         #define LOOP_OPS    2
         uint64_t load_loop = t->x.load_total_memory / LOOP_OPS;
-	register uint64_t N = load_loop / sizeof(double);
+        register uint64_t N = load_loop / sizeof(double);
         uint64_t load_bites = N * sizeof(double) * LOOP_OPS;
-	register uint64_t i;
-	register double* a = (double*)t->x.load_arena;
-	register double* b = a + N;
+        register uint64_t i;
+        register double* a = (double*)t->x.load_arena;
+        register double* b = a + N;
         register double* tmp;
 
         LOAD_MEMORY_INIT_MIBPS
@@ -605,18 +604,18 @@ static void load_stream_sum(per_thread_t *t)
 {
         #define LOOP_OPS    1
         uint64_t load_loop = t->x.load_total_memory / LOOP_OPS;
-	register uint64_t N = load_loop / sizeof(uint64_t);
+        register uint64_t N = load_loop / sizeof(uint64_t);
         uint64_t load_bites = N * sizeof(uint64_t) * LOOP_OPS;
-	register uint64_t i;
+        register uint64_t i;
         register uint64_t* a = (uint64_t*)t->x.load_arena;
-	register uint64_t  s = 0;
+        register uint64_t  s = 0;
 
         LOAD_MEMORY_INIT_MIBPS
         do {
                 for (i = 0; i < N; ++i) {
                         s += a[i];
                 }
- 	        LOAD_MEMORY_SAMPLE_MIBPS
+                 LOAD_MEMORY_SAMPLE_MIBPS
                 use_result_dummy += s;
         } while (1);
         #undef LOOP_OPS
@@ -1115,7 +1114,6 @@ usage:
                 thread_data[i].x.load_arena = NULL;                 // memory buffer used by this thread
                 thread_data[i].x.load_total_memory = genchase_args.total_memory;          // size of the arena
                 thread_data[i].x.load_offset = offset;                // memory buffer offset
-                thread_data[i].x.load_tlb_locality;          // group accesses within this range in order to amortize TLB fills
 
                 if (run_test_type == RUN_CHASE_LOADED) {
                         if (i == 0) {
@@ -1170,9 +1168,9 @@ usage:
         nr_samples = nr_samples + 1;        // we drop the first sample
         double *cur_samples = alloca(nr_threads * sizeof(*cur_samples));
         uint64_t last_sample_time, cur_sample_time;
-        double chase_min = 1./0., chase_max = 0., chase_deviation = 0;
+        double chase_min = 1./0., chase_max = 0.;
         double chase_running_sum = 0., load_running_sum = 0., chase_running_geosum = 0.;
-        double load_max_mibps = 0, load_min_mibps = 1./0., load_avg_mibps = 0;
+        double load_max_mibps = 0, load_min_mibps = 1./0.;
         double chase_thd_sum = 0, load_thd_sum = 0;
         uint64_t time_delta = 0;
         int ready;
@@ -1262,7 +1260,6 @@ usage:
                 }
         }
 
-        load_avg_mibps = load_thd_sum / (nr_samples-1);
         // printf("sample_sum=%.f\n", sample_sum);
         // printf("main: float=%li, void*=%li, size_t=%li, uint64_t=%li, double=%li, long=%li, int=%li\n",
         //       sizeof(float), sizeof(void*), sizeof(size_t), sizeof(uint64_t), sizeof(double), sizeof(long), sizeof(int) );
@@ -1303,7 +1300,7 @@ usage:
                 case RUN_BANDWIDTH:
                         printf("\t, %s\t, %s\n", not_used, memload_optarg);
                         break;
-                default: RUN_CHASE_LOADED:
+                default:
                         printf("\t, %s\t, %s\n", chase_optarg, not_used);
         }
 
