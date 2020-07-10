@@ -178,7 +178,7 @@ get_hardware_config ()
 
         phycore_num=`lscpu | grep "Core(s) per socket" | tr -d ' ' | cut -d':' -f2 2> /dev/null`
         core_threads=`lscpu | grep "Thread(s) per core:" | tr -d ' ' | cut -d':' -f2 2> /dev/null`
-        cputhread_num=`lscpu | grep "CPU(s):            " | tr -d ' ' | cut -d ':' -f2 2> /dev/null`
+        cputhread_num=`lscpu | grep "CPU(s):            " | head -n 1 | tr -d ' ' | cut -d ':' -f2 2> /dev/null`
         numa_num=`lscpu | grep "NUMA node(s)" | tr -d ' ' | cut -d':' -f2 2> /dev/null`
         socket_num=`lscpu | grep "Socket(s)" | tr -d ' ' | cut -d':' -f2 2> /dev/null`
     MEMBIND_LIST=`numactl --show 2> /dev/null | grep membind | cut -d':' -f2 2> /dev/null`
