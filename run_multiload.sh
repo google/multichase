@@ -1,5 +1,16 @@
 #!/bin/bash
 # Copyright 2020 Ampere Computing LLC. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+# 
+#   http://www.apache.org/licenses/LICENSE-2.0
+# 
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 ARCH=$(uname -p)
 HOSTNAME=$(cat /etc/hostname)
@@ -61,14 +72,18 @@ usage(){
     echo "   chaseload - Runs 1 thread of \"simple\" latency with multiple threads using the loads below."
     echo " "
     echo "Load algorithm list to test various rd/wr ratios. More algorithms can easily be added to multiload.c. Current algorithms are:"
-    echo "   memcpy-libc    1:1 rd:wr ratio - glibc memcpy()"
-    echo "   memset-libc    0:1 rd:wr ratio - glibc memset() non-zero data"
-    echo "   memsetz-libc   0:1 rd:wr ratio - glibc memset() zero data"
-    echo "   stream-copy    1:1 rd:wr ratio - lmbench stream copy instructions b[i]=a[i] (actual binary depends on compiler & -O level)"
-    echo "   stream-sum     1:0 rd:wr ratio - lmbench stream sum instructions: a[i]+=1   (actual binary depends on compiler & -O level)"
-    echo "   stream-triad   2:1 rd:wr ratio - lmbench stream triad instructions: a[i]=b[i]+(scalar*c[i])"
+    echo "   memcpy-libc    1:1 rd:wr ratio - glibc memcpy()                                           (binary depends on glibc)"
+    echo "   memset-libc    0:1 rd:wr ratio - glibc memset() with non-zero data                        (binary depends on glibc)"
+    echo "   memsetz-libc   0:1 rd:wr ratio - glibc memset() with zero data (aarch64 DCZVA)            (binary depends on glibc)"
+    echo "   stream-copy    1:1 rd:wr ratio - lmbench stream copy instructions:  b[i]=a[i]             (binary depends on compiler & -O level)"
+    echo "   stream-sum     1:0 rd:wr ratio - lmbench stream sum instructions:   s += a[i]             (binary depends on compiler & -O level)"
+    echo "   stream-triad   2:1 rd:wr ratio - lmbench stream triad instructions: a[i]=b[i]+scalar*c[i] (binary depends on compiler & -O level)"
     echo " "
-    echo "*** Due to the complexity of other options, they can only be changed by editting this script"
+    echo "*** Due to the complexity of other options, they can only be changed by editting this script. These include:"
+    echo "   Thread scaling list (start, end, step)"
+    echo "   Chase latency stride"
+    echo "   Memory buffer size list"
+    echo "   chase and load algorithm lists"
     echo "========================================================================================"
 }
 
@@ -100,16 +115,17 @@ RUN_BANDWIDTH=1
 RUN_CHASE_LOADED=2
 if [ $RUN_TEST_TYPE = $RUN_CHASE ]; then 
     PSTEP_START=1		# Parallel thread start value when running thread scaling tests. 
-    PSTEP_INC=4 		# Parallel thread steps when running thread scaling tests. 
-    PSTEP_END=512         # Will be reduced to CPUTHREADS if CPUTHREADS < PSTEP_END. 
+    PSTEP_INC=1 		# Parallel thread steps when running thread scaling tests. 
+    PSTEP_END=1         # Will be reduced to CPUTHREADS if CPUTHREADS < PSTEP_END. 
     CHASE_ALGORITHM="simple"
     LOAD_ALGORITHM_LIST="none"
-    RAND_STRIDE=16      #lmbench latmemrd uses 16 for simple chase. Other chase/mem sizes may need to be bigger (ie. 512). 
-    BUFLIST_TYPE=0       # 0=Use MEM_SIZE* to create a memory list, 1=use buflist_custom
+    RAND_STRIDE=16      # lmbench latmemrd uses 16 for simple chase. Other chase algorithms may need to be bigger.
+    BUFLIST_TYPE=0      # 0=Use MEM_SIZE* to create a memory list, 1=use buflist_custom
+                        # 0 will use the LMBench lat-mem-rd algorithm to generate buffere sizes.
     let MEM_SIZE_END_B=1*1024*1024*1024
     let MEM_SIZE_START_B=4*1024
     #let MEM_SIZE_START_B=MEM_SIZE_END_B
-    buflist_custom=( $((32*1024)) $((512*1024)) $((16*1024*1024)) $((1*1024*1024*1024)) )     # 64K / 1M / 32M caches
+    buflist_custom=( $((32*1024)) $((512*1024)) $((16*1024*1024)) $((512*1024*1024)) )     # 64K / 1M / 32M caches
 
 elif [ $RUN_TEST_TYPE = $RUN_BANDWIDTH ]; then 
     PSTEP_START=1		# Parallel thread start value when running thread scaling tests. 
@@ -117,12 +133,13 @@ elif [ $RUN_TEST_TYPE = $RUN_BANDWIDTH ]; then
     PSTEP_END=512       # Will be reduced to CPUTHREADS if CPUTHREADS < PSTEP_END. 
     CHASE_ALGORITHM="none"
     LOAD_ALGORITHM_LIST="memcpy-libc memset-libc memsetz-libc stream-sum stream-triad"
-    RAND_STRIDE=16       #not used for bandwidth test
-    BUFLIST_TYPE=1       # 0=Use MEM_SIZE* to create a memory list, 1=use buflist_custom
+    RAND_STRIDE=16      # not used for bandwidth test
+    BUFLIST_TYPE=0      # 0=Use MEM_SIZE* to create a memory list, 1=use buflist_custom
+                        # 0 will use the LMBench lat-mem-rd algorithm to generate buffere sizes.
     let MEM_SIZE_END_B=1*1024*1024*1024
     #let MEM_SIZE_START_B=4*1024
     let MEM_SIZE_START_B=MEM_SIZE_END_B
-    buflist_custom=( $((32*1024)) $((512*1024)) $((16*1024*1024)) $((1*1024*1024*1024)) )     # 64K / 1M / 32M caches
+    buflist_custom=( $((32*1024)) $((512*1024)) $((2*1024*1024)) $((512*1024*1024)) )     # 64K / 1M / 32M caches
 
 elif [ $RUN_TEST_TYPE = $RUN_CHASE_LOADED ]; then 
     PSTEP_START=1		# Parallel thread start value when running thread scaling tests. 
@@ -130,12 +147,13 @@ elif [ $RUN_TEST_TYPE = $RUN_CHASE_LOADED ]; then
     PSTEP_END=512       # Will be reduced to CPUTHREADS if CPUTHREADS < PSTEP_END. 
     CHASE_ALGORITHM="chaseload"
     LOAD_ALGORITHM_LIST="memcpy-libc memset-libc memsetz-libc stream-sum stream-triad"
-    RAND_STRIDE=16       #lmbench latmemrd uses 16 for simple chase. Other chase/mem sizes may need to be bigger (ie. 512). 
-    BUFLIST_TYPE=0       # 0=Use MEM_SIZE* to create a memory list, 1=use buflist_custom
+    RAND_STRIDE=16      # lmbench latmemrd uses stride 16 for simple chase. Other chase/mem sizes may need to be bigger (ie. 512). 
+    BUFLIST_TYPE=0      # 0=Use MEM_SIZE* to create a memory list, 1=use buflist_custom
+                        # 0 will use the LMBench lat-mem-rd algorithm to generate buffere sizes.
     let MEM_SIZE_END_B=1*1024*1024*1024
     #let MEM_SIZE_START_B=4*1024
     let MEM_SIZE_START_B=MEM_SIZE_END_B
-    buflist_custom=( $((32*1024)) $((512*1024)) $((16*1024*1024)) $((1*1024*1024*1024)) )     # 64K / 1M / 32M caches
+    buflist_custom=( $((32*1024)) $((512*1024)) $((2*1024*1024)) $((512*1024*1024)) )     # 64K / 1M / 32M caches
 else
     echo "Found unknown RUN_TEST_TYPE=$RUN_TEST_TYPE"
     usage
@@ -199,7 +217,7 @@ get_hardware_config ()
 	log_without_date "  threads per core= $core_threads"
 	log_without_date "  logical threads = $cputhread_num"
 	if [ -z "$numa_num" ]; then
-		NUMA_NODES=1
+		NUMA_NODES=0
 	    log_without_date "  NUMA nodes      = none found"
 	else
 		NUMA_NODES=$numa_num
@@ -457,7 +475,7 @@ run_test(){
                             log "Run iter $i/$ITERATIONS, $BASE_MULTILOAD_CMD -t $t -m $j ${LOAD_COMMAND} -X"
                             ${BASE_MULTILOAD_CMD} -t $t -m $j ${LOAD_COMMAND} -X | tee -a ${OUTPUT_DIR}/$FILENAME.txt 2>&1
                         done
-                    elif [ $NUMA_NODES -eq 1 ] ; then
+                    elif [ $NUMA_NODES -eq 0 ] ; then
                         profiling_start "Run $ITERATIONS iterations, taskset ${cpulist[$t-1]} $BASE_MULTILOAD_CMD -t $t -m $j ${LOAD_COMMAND}"
                         for i in $(seq 1 $ITERATIONS) ; do
                             log             "Iteration $i of $ITERATIONS, taskset ${cpulist[$t-1]} $BASE_MULTILOAD_CMD -t $t -m $j ${LOAD_COMMAND}"
@@ -536,11 +554,12 @@ fi
 log_without_date "  Iterations: $ITERATIONS"  
 log_without_date "  Thread List: $( echo "${thdcount_testlist[@]}" )"
 log_without_date "  Mem Buf List: $( echo "${bufsize_testlist[@]}" )"
+log_without_date "  Mem Load List: $( echo "$LOAD_ALGORITHM_LIST" )"
 log_without_date "  Random Stride: $RAND_STRIDE"  
 if [ "$THREAD_AFFINITY_ENABLED" == "0" ]; then
     log_without_date "  Thread affinity disabled"
     run_test "Thread affinity disabled"
-elif [ "$NUMA_NODES" == "1" ] ; then
+elif [ "$NUMA_NODES" == "0" ] ; then
     log_without_date "  Numa runs: No"
     if [ "$ARCH" == "x86_64" ] ; then
         create_taskset_cpulist_x86_64 $CPUTHREADS
