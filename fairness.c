@@ -36,7 +36,17 @@ typedef union {
         char pad[AVOID_FALSE_SHARING];
 } per_thread_t;
 
-per_thread_t global_counter;
+typedef struct {
+	struct {
+		atomic_t count;
+		char spacer[SWEEP_SPACER];
+	} x[SWEEP_MAX];
+	int sweep_id;
+} sync_count;
+
+
+sync_count global_counter;
+
 
 static volatile int relaxed;
 
@@ -78,15 +88,16 @@ static void *worker(void *_args)
                 sleep(1);
         }
         while (!relaxed) {
-                x50(__sync_fetch_and_add(&global_counter.x.count, 1););
+		atomic_t *target = &(global_counter.x[global_counter.sweep_id].count);
+                x50(__sync_fetch_and_add(target, 1););
                 __sync_fetch_and_add(&args->x.count, 50);
         }
-
         if (delay_mask & (1u<<args->x.cpu)) {
                 sleep(1);
         }
         while (relaxed) {
-                x50(__sync_fetch_and_add(&global_counter.x.count, 1); cpu_relax(););
+		atomic_t *target = &(global_counter.x[global_counter.sweep_id].count);
+                x50(__sync_fetch_and_add(target, 1); cpu_relax(););
                 __sync_fetch_and_add(&args->x.count, 50);
         }
         return NULL;
@@ -95,12 +106,24 @@ static void *worker(void *_args)
 int main(int argc, char **argv)
 {
         int c;
+	int sweep_max=1;
+	size_t time_slice=500000;
+	char sep = ' ';
 
         delay_mask = 0;
-        while ((c = getopt(argc, argv, "d:")) != -1) {
+        while ((c = getopt(argc, argv, "d:s:t:S:")) != -1) {
                 switch (c) {
                 case 'd':
                         delay_mask = strtoul(optarg, 0, 0);
+                        break;
+                case 's':
+                        sweep_max = strtoul(optarg, 0, 0);
+                        break;
+                case 't':
+                        time_slice = strtof(optarg, 0) * 1000000 ;
+                        break;
+                case 'S':
+                        sep = *optarg;
                         break;
                 default:
                         goto usage;
@@ -109,11 +132,17 @@ int main(int argc, char **argv)
 
         if (argc - optind != 0) {
 usage:
-                fprintf(stderr, "usage: %s [-d delay_mask]\n"
+                fprintf(stderr, "usage: %s \n"
+				" [-d delay_mask]\n"
+				" [-s sweep_max]\n"
+				" [-t time]\n"
                                 "by default runs one thread on each cpu, use taskset(1) to\n"
                                 "restrict operation to fewer cpus/threads.\n"
-                                "the optional delay_mask specifies a mask of cpus on which to delay\n"
-                                "the startup.\n", argv[0]);
+                                "The optional delay_mask specifies a mask of cpus on which to delay\n"
+                                "the startup.\n"
+				"The optional sweep_max causes testing across multiple different cache lines.\n"
+				"The optional time determines how often to poll results (float in seconds).\n"
+				, argv[0]);
                 exit(1);
         }
 
@@ -158,18 +187,30 @@ usage:
         atomic_t *samples = calloc(nr_threads, sizeof(*samples));
 
         printf("results are avg latency per locked increment in ns, one column per thread\n");
-        printf("cpu:");
+	char *fmt,*tail="";
+	if (sep == ',') {
+		printf("relaxed,sweep");
+		fmt = ",cpu-%u"; 
+		tail = ",avg,stdev,min,max";
+	}	else {
+		fmt = "%6u  ";
+        	printf("cpu:");
+	}
         for (u = 0; u < nr_threads; ++u) {
-                printf("%6u  ", thread_args[u].x.cpu);
+                printf(fmt, thread_args[u].x.cpu);
         }
-        printf("\n");
+        printf("%s\n",tail);
+	global_counter.sweep_id=0;
         for (relaxed = 0; relaxed < 2; ++relaxed) {
-                printf(relaxed ? "relaxed:\n" : "unrelaxed:\n");
-
+		if (sep != ',')
+	                printf(relaxed ? "relaxed:\n" : "unrelaxed:\n");
+		for (int sweep = 0 ; sweep < sweep_max ; sweep++) {
+		global_counter.sweep_id=sweep;
                 uint64_t last_stamp = now_nsec();
                 size_t sample_nr;
                 for (sample_nr = 0; sample_nr < 6; ++sample_nr) {
-                        usleep(500000);
+			double min=1.0/0., max=0.;
+                        usleep(time_slice);
                         for (u = 0; u < nr_threads; ++u) {
                                 samples[u] = __sync_lock_test_and_set(&thread_args[u].x.count, 0);
                         }
@@ -179,20 +220,38 @@ usage:
 
                         // throw away the first sample to avoid race issues at startup / mode switch
                         if (sample_nr == 0) continue;
+			if (sep == ',')
+				printf("%d,%p",relaxed,&(global_counter.x[global_counter.sweep_id].count));
 
-                        printf("  ");
+			if (sep == ',') {
+				fmt = ",%.1f";
+			} else {
+				fmt = "  %6.1f";
+                        	printf("  ");
+			}
                         double sum = 0.;
                         double sum_squared = 0.;
                         for (u = 0; u < nr_threads; ++u) {
                                 double s = time_delta / (double)samples[u];
-                                printf("  %6.1f", s);
+                                printf(fmt, s);
+				min = min < s ? min : s;
+				max = max > s ? max : s;
                                 sum += s;
                                 sum_squared += s*s;
                         }
-                        printf(" : avg %6.1f  sdev %6.1f\n",
+			if (sep == ',') {
+				fmt = ",%.1f,%.1f,%.1f,%.1f\n";
+			} else {
+				fmt = " : avg %6.1f  sdev %6.1f  min %6.1f  max %6.1f\n";
+			}
+                        printf(fmt,
                                 sum / nr_threads,
-                                sqrt((sum_squared - sum*sum/nr_threads)/(nr_threads-1)));
+                                sqrt((sum_squared - sum*sum/nr_threads)/(nr_threads-1)),
+				min, max);
+			fflush(stdout);
                 }
+		}
         }
         return 0;
 }
+

@@ -17,6 +17,15 @@
 // We assume 1024 bytes is good enough alignment to avoid false sharing on all
 // architectures.
 #define AVOID_FALSE_SHARING     (1024)
+#ifndef CACHELINE_SIZE
+#define CACHELINE_SIZE 64
+#endif
+#ifndef SWEEP_MAX
+#define SWEEP_MAX 256
+#endif
+#ifndef SWEEP_SPACER
+#define SWEEP_SPACER (CACHELINE_SIZE-sizeof(unsigned))
+#endif
 
 #if defined(__x86_64__) || defined(__i386__)
 static inline void cpu_relax(void) {
