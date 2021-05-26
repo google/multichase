@@ -51,8 +51,9 @@ static inline int mbind(void *addr, unsigned long len, int mode,
   return syscall(__NR_mbind, addr, len, mode, nodemask, maxnode, flags);
 }
 
-static void arena_weighted_mbind(void *arena, size_t arena_size,
-                                 uint16_t *weights, size_t nr_weights) {
+static void arena_weighted_mbind(size_t page_size, void *arena,
+                                 size_t arena_size, uint16_t *weights,
+                                 size_t nr_weights) {
   /* compute cumulative sum for weights
    * cumulative sum starts at -1
    * the method for determining a hit on a weight i is when the generated
@@ -68,12 +69,11 @@ static void arena_weighted_mbind(void *arena, size_t arena_size,
     weights_cumsum[i] = weights_cumsum[i - 1] + weights[i];
   }
   const int32_t weight_sum = weights_cumsum[nr_weights - 1] + 1;
-  const int pagesize = getpagesize();
 
   uint64_t mask = 0;
   char *q = (char *)arena + arena_size;
   rng_init(1);
-  for (char *p = arena; p < q; p += pagesize) {
+  for (char *p = arena; p < q; p += page_size) {
     uint32_t r = rng_int(1 << 31) % weight_sum;
     unsigned int node;
     for (node = 0; node < nr_weights; node++) {
@@ -82,7 +82,7 @@ static void arena_weighted_mbind(void *arena, size_t arena_size,
       }
     }
     mask = 1 << node;
-    if (mbind(p, pagesize, MPOL_BIND, &mask, nr_weights, MPOL_MF_STRICT)) {
+    if (mbind(p, page_size, MPOL_BIND, &mask, nr_weights, MPOL_MF_STRICT)) {
       perror("mbind");
       exit(1);
     }
@@ -92,12 +92,26 @@ static void arena_weighted_mbind(void *arena, size_t arena_size,
 }
 
 static int get_page_size_flags(size_t page_size) {
+  int lg = 0;
+
+  if (!page_size || (page_size & (page_size - 1))) {
+    fprintf(stderr, "page size must be a power of 2: %zu\n", page_size);
+    exit(1);
+  }
+
   if (!page_size_is_huge(page_size)) {
     return 0;
   }
 
-  fprintf(stderr, "unsupported page size: %zu\n", page_size);
-  exit(1);
+  /*
+   * We need not just MAP_HUGETLB, but also a flag specifying the page size.
+   * mmap(2) says that these flags are defined as:
+   * log2(page size) << MAP_HUGE_SHIFT.
+   */
+  while (page_size >>= 1) {
+    ++lg;
+  }
+  return MAP_HUGETLB | (lg << MAP_HUGE_SHIFT);
 }
 
 void *alloc_arena_mmap(size_t page_size, size_t arena_size) {
@@ -120,7 +134,8 @@ void *alloc_arena_mmap(size_t page_size, size_t arena_size) {
   }
 
   if (is_weighted_mbind) {
-    arena_weighted_mbind(arena, arena_size, mbind_weights, MAX_MEM_NODES);
+    arena_weighted_mbind(page_size, arena, arena_size, mbind_weights,
+                         MAX_MEM_NODES);
   }
   return arena;
 }

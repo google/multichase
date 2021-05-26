@@ -487,6 +487,7 @@ int main(int argc, char **argv) {
   int c;
   size_t i;
   size_t default_page_size = get_native_page_size();
+  size_t page_size = default_page_size;
   size_t nr_threads = DEF_NR_THREADS;
   size_t nr_samples = DEF_NR_SAMPLES;
   size_t cache_flush_size = DEF_CACHE_FLUSH;
@@ -499,12 +500,12 @@ int main(int argc, char **argv) {
 
   genchase_args.total_memory = DEF_TOTAL_MEMORY;
   genchase_args.stride = DEF_STRIDE;
-  genchase_args.tlb_locality = DEF_TLB_LOCALITY * getpagesize();
+  genchase_args.tlb_locality = DEF_TLB_LOCALITY * default_page_size;
   genchase_args.gen_permutation = gen_random_permutation;
 
   setvbuf(stdout, NULL, _IOLBF, BUFSIZ);
 
-  while ((c = getopt(argc, argv, "ac:F:m:n:oO:S:s:T:t:vXyW:")) != -1) {
+  while ((c = getopt(argc, argv, "ac:F:p:m:n:oO:S:s:T:t:vXyW:")) != -1) {
     switch (c) {
       case 'a':
         print_average = 1;
@@ -541,6 +542,14 @@ int main(int argc, char **argv) {
           fprintf(stderr,
                   "cache_flush_size must be a non-negative integer (suffixed "
                   "with k, m, or g)\n");
+          exit(1);
+        }
+        break;
+      case 'p':
+        if (parse_mem_arg(optarg, &page_size)) {
+          fprintf(stderr,
+                  "page size must be a non-negative integer (suffixed with k, "
+                  "m, or g)\n");
           exit(1);
         }
         break;
@@ -654,12 +663,14 @@ int main(int argc, char **argv) {
     fprintf(stderr, "-O nnnn[kmg]   offset the entire chase by nnnn bytes\n");
     fprintf(stderr, "-s nnnn[kmg]   stride size (default %zu)\n", DEF_STRIDE);
     fprintf(stderr, "-T nnnn[kmg]   TLB locality in bytes (default %zu)\n",
-            DEF_TLB_LOCALITY * getpagesize());
+            DEF_TLB_LOCALITY * default_page_size);
     fprintf(stderr,
             "               NOTE: TLB locality will be rounded down to a "
             "multiple of stride\n");
     fprintf(stderr, "-t nr_threads  number of threads (default %zu)\n",
             DEF_NR_THREADS);
+    fprintf(stderr, "-p page_size   backing page size to use (default %zu)\n",
+            default_page_size);
     fprintf(stderr,
             "-F nnnn[kmg]   amount of memory to use to flush the caches after "
             "constructing\n"
@@ -737,8 +748,7 @@ int main(int argc, char **argv) {
 
   // generate the chases by launching multiple threads
   genchase_args.arena =
-      (char *)alloc_arena_mmap(default_page_size,
-                               genchase_args.total_memory + offset) +
+      (char *)alloc_arena_mmap(page_size, genchase_args.total_memory + offset) +
       offset;
   per_thread_t *thread_data =
       alloc_arena_mmap(default_page_size, nr_threads * sizeof(per_thread_t));

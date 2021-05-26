@@ -66,6 +66,7 @@ typedef enum { RUN_CHASE, RUN_BANDWIDTH, RUN_CHASE_LOADED } test_type_t;
 static volatile uint64_t use_result_dummy = 0x0123456789abcdef;
 
 size_t default_page_size;
+size_t page_size;
 int verbosity;
 int print_timestamp;
 int is_weighted_mbind;
@@ -727,8 +728,8 @@ static void *thread_start(void *data) {
       printf("thread_start(%d) memload generate buffers\n", args->x.thread_num);
     // generate buffers
     args->x.load_arena =
-        (char *)alloc_arena_mmap(default_page_size, args->x.load_total_memory +
-                                                        args->x.load_offset) +
+        (char *)alloc_arena_mmap(
+            page_size, args->x.load_total_memory + args->x.load_offset) +
         args->x.load_offset;
     memset(args->x.load_arena, 1,
            args->x.load_total_memory);  // ensure pages are mapped
@@ -782,16 +783,16 @@ int main(int argc, char **argv) {
       RUN_CHASE;  // RUN_CHASE, RUN_BANDWIDTH, RUN_CHASE_LOADED
   struct generate_chase_common_args genchase_args;
 
-  default_page_size = get_native_page_size();
+  default_page_size = page_size = get_native_page_size();
 
   genchase_args.total_memory = DEF_TOTAL_MEMORY;
   genchase_args.stride = DEF_STRIDE;
-  genchase_args.tlb_locality = DEF_TLB_LOCALITY * getpagesize();
+  genchase_args.tlb_locality = DEF_TLB_LOCALITY * default_page_size;
   genchase_args.gen_permutation = gen_random_permutation;
 
   setvbuf(stdout, NULL, _IOLBF, BUFSIZ);
 
-  while ((c = getopt(argc, argv, "ac:l:F:m:n:oO:S:s:T:t:vXyW:")) != -1) {
+  while ((c = getopt(argc, argv, "ac:l:F:p:m:n:oO:S:s:T:t:vXyW:")) != -1) {
     switch (c) {
       case 'a':
         print_average = 1;
@@ -845,6 +846,14 @@ int main(int argc, char **argv) {
           fprintf(stderr,
                   "Error: cache_flush_size must be a non-negative integer "
                   "(suffixed with k, m, or g)\n");
+          exit(1);
+        }
+        break;
+      case 'p':
+        if (parse_mem_arg(optarg, &page_size)) {
+          fprintf(stderr,
+                  "Error: page_size must be a non-negative integer (suffixed "
+                  "with k, m, or g)\n");
           exit(1);
         }
         break;
@@ -1005,6 +1014,8 @@ int main(int argc, char **argv) {
             "with nta)\n"
             "         default: %zu\n",
             DEF_CACHE_FLUSH);
+    fprintf(stderr, "-p nnnn[kmg]   backing page size to use (default %zu)\n",
+            default_page_size);
     fprintf(stderr, "-m nnnn[kmg]   total memory size (default %zu)\n",
             DEF_TOTAL_MEMORY);
     fprintf(stderr,
@@ -1022,7 +1033,7 @@ int main(int argc, char **argv) {
         DEF_OFFSET);
     fprintf(stderr, "-s nnnn[kmg]   stride size (default %zu)\n", DEF_STRIDE);
     fprintf(stderr, "-T nnnn[kmg]   TLB locality in bytes (default %zu)\n",
-            DEF_TLB_LOCALITY * getpagesize());
+            DEF_TLB_LOCALITY * default_page_size);
     fprintf(stderr,
             "         NOTE: TLB locality will be rounded down to a multiple of "
             "stride\n");
@@ -1110,10 +1121,9 @@ int main(int argc, char **argv) {
 
     // generate the chases by launching multiple threads
     if (verbosity > 2) printf("allocate genchase_args.arena\n");
-    genchase_args.arena =
-        (char *)alloc_arena_mmap(default_page_size,
-                                 genchase_args.total_memory + offset) +
-        offset;
+    genchase_args.arena = (char *)alloc_arena_mmap(
+                              page_size, genchase_args.total_memory + offset) +
+                          offset;
   }
   per_thread_t *thread_data =
       alloc_arena_mmap(default_page_size, nr_threads * sizeof(per_thread_t));
