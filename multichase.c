@@ -486,7 +486,6 @@ int main(int argc, char **argv) {
   char *p;
   int c;
   size_t i;
-  void *(*alloc_arena)(size_t) = alloc_arena_mmap;
   size_t nr_threads = DEF_NR_THREADS;
   size_t nr_samples = DEF_NR_SAMPLES;
   size_t cache_flush_size = DEF_CACHE_FLUSH;
@@ -504,7 +503,7 @@ int main(int argc, char **argv) {
 
   setvbuf(stdout, NULL, _IOLBF, BUFSIZ);
 
-  while ((c = getopt(argc, argv, "ac:F:Hm:n:oO:S:s:T:t:vXyW:")) != -1) {
+  while ((c = getopt(argc, argv, "ac:F:m:n:oO:S:s:T:t:vXyW:")) != -1) {
     switch (c) {
       case 'a':
         print_average = 1;
@@ -597,9 +596,6 @@ int main(int argc, char **argv) {
       case 'v':
         ++verbosity;
         break;
-      case 'H':
-        alloc_arena = alloc_arena_shm;
-        break;
       case 'W':
         is_weighted_mbind = 1;
         char *tok = NULL, *saveptr = NULL;
@@ -663,9 +659,6 @@ int main(int argc, char **argv) {
             "multiple of stride\n");
     fprintf(stderr, "-t nr_threads  number of threads (default %zu)\n",
             DEF_NR_THREADS);
-    fprintf(stderr,
-            "-H             use SHM_HUGETLB for huge page allocation (if "
-            "supported)\n");
     fprintf(stderr,
             "-F nnnn[kmg]   amount of memory to use to flush the caches after "
             "constructing\n"
@@ -743,7 +736,7 @@ int main(int argc, char **argv) {
 
   // generate the chases by launching multiple threads
   genchase_args.arena =
-      (char *)alloc_arena(genchase_args.total_memory + offset) + offset;
+      (char *)alloc_arena_mmap(genchase_args.total_memory + offset) + offset;
   per_thread_t *thread_data =
       alloc_arena_mmap(nr_threads * sizeof(per_thread_t));
   void *flush_arena = NULL;

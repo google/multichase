@@ -96,12 +96,11 @@ typedef union {
     void *flush_arena;
     size_t cache_flush_size;
 
-    test_type_t run_test_type;     // test type: chase or memory bandwidth
-    const chase_t *memload;        // memory bandwidth function
-    void *(*alloc_arena)(size_t);  // memory allocation function
-    char *load_arena;              // load memory buffer used by this thread
-    size_t load_total_memory;      // load size of the arena
-    size_t load_offset;            // load offset of the arena
+    test_type_t run_test_type;  // test type: chase or memory bandwidth
+    const chase_t *memload;     // memory bandwidth function
+    char *load_arena;           // load memory buffer used by this thread
+    size_t load_total_memory;   // load size of the arena
+    size_t load_offset;         // load offset of the arena
     size_t load_tlb_locality;   // group accesses within this range in order to
                                 // amortize TLB fills
     volatile size_t sample_no;  // flag from main thread to tell bandwdith
@@ -726,8 +725,8 @@ static void *thread_start(void *data) {
     if (verbosity > 2)
       printf("thread_start(%d) memload generate buffers\n", args->x.thread_num);
     // generate buffers
-    args->x.load_arena = (char *)args->x.alloc_arena(args->x.load_total_memory +
-                                                     args->x.load_offset) +
+    args->x.load_arena = (char *)alloc_arena_mmap(args->x.load_total_memory +
+                                                  args->x.load_offset) +
                          args->x.load_offset;
     memset(args->x.load_arena, 1,
            args->x.load_total_memory);  // ensure pages are mapped
@@ -767,7 +766,6 @@ int main(int argc, char **argv) {
   char *p;
   int c;
   size_t i;
-  void *(*alloc_arena)(size_t) = alloc_arena_mmap;
   size_t nr_threads = DEF_NR_THREADS;
   size_t nr_samples = DEF_NR_SAMPLES;
   size_t cache_flush_size = DEF_CACHE_FLUSH;
@@ -789,7 +787,7 @@ int main(int argc, char **argv) {
 
   setvbuf(stdout, NULL, _IOLBF, BUFSIZ);
 
-  while ((c = getopt(argc, argv, "ac:l:F:Hm:n:oO:S:s:T:t:vXyW:")) != -1) {
+  while ((c = getopt(argc, argv, "ac:l:F:m:n:oO:S:s:T:t:vXyW:")) != -1) {
     switch (c) {
       case 'a':
         print_average = 1;
@@ -936,9 +934,6 @@ int main(int argc, char **argv) {
       case 'v':
         ++verbosity;
         break;
-      case 'H':
-        alloc_arena = alloc_arena_shm;
-        break;
       case 'W':
         is_weighted_mbind = 1;
         char *tok = NULL, *saveptr = NULL;
@@ -1006,9 +1001,6 @@ int main(int argc, char **argv) {
             "with nta)\n"
             "         default: %zu\n",
             DEF_CACHE_FLUSH);
-    fprintf(
-        stderr,
-        "-H       use SHM_HUGETLB for huge page allocation (if supported)\n");
     fprintf(stderr, "-m nnnn[kmg]   total memory size (default %zu)\n",
             DEF_TOTAL_MEMORY);
     fprintf(stderr,
@@ -1115,7 +1107,7 @@ int main(int argc, char **argv) {
     // generate the chases by launching multiple threads
     if (verbosity > 2) printf("allocate genchase_args.arena\n");
     genchase_args.arena =
-        (char *)alloc_arena(genchase_args.total_memory + offset) + offset;
+        (char *)alloc_arena_mmap(genchase_args.total_memory + offset) + offset;
   }
   per_thread_t *thread_data =
       alloc_arena_mmap(nr_threads * sizeof(per_thread_t));
@@ -1138,7 +1130,6 @@ int main(int argc, char **argv) {
     thread_data[i].x.flush_arena = flush_arena;
     thread_data[i].x.cache_flush_size = cache_flush_size;
     thread_data[i].x.memload = memload;
-    thread_data[i].x.alloc_arena = alloc_arena;  // memory allocaton method
     thread_data[i].x.load_arena = NULL;  // memory buffer used by this thread
     thread_data[i].x.load_total_memory =
         genchase_args.total_memory;         // size of the arena
