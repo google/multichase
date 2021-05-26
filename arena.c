@@ -29,6 +29,22 @@ extern int verbosity;
 extern int is_weighted_mbind;
 extern uint16_t mbind_weights[MAX_MEM_NODES];
 
+size_t get_native_page_size(void) {
+  long sz;
+
+  sz = sysconf(_SC_PAGESIZE);
+  if (sz < 0) {
+    perror("failed to get native page size");
+    exit(1);
+  }
+
+  return (size_t)sz;
+}
+
+bool page_size_is_huge(size_t page_size) {
+  return page_size > get_native_page_size();
+}
+
 static inline int mbind(void *addr, unsigned long len, int mode,
                         unsigned long *nodemask, unsigned long maxnode,
                         unsigned flags) {
@@ -75,16 +91,32 @@ static void arena_weighted_mbind(void *arena, size_t arena_size,
   free(weights_cumsum);
 }
 
-void *alloc_arena_mmap(size_t arena_size) {
+static int get_page_size_flags(size_t page_size) {
+  if (!page_size_is_huge(page_size)) {
+    return 0;
+  }
+
+  fprintf(stderr, "unsupported page size: %zu\n", page_size);
+  exit(1);
+}
+
+void *alloc_arena_mmap(size_t page_size, size_t arena_size) {
   void *arena;
-  int pagemask = getpagesize() - 1;
+  size_t pagemask = page_size - 1;
+  int flags = MAP_PRIVATE | MAP_ANONYMOUS | get_page_size_flags(page_size);
 
   arena_size = (arena_size + pagemask) & ~pagemask;
-  arena = mmap(0, arena_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON,
-               -1, 0);
+  arena = mmap(0, arena_size, PROT_READ | PROT_WRITE, flags, -1, 0);
   if (arena == MAP_FAILED) {
     perror("mmap");
     exit(1);
+  }
+
+  /* Explicitly disable THP for small pages. */
+  if (!page_size_is_huge(page_size)) {
+    if (madvise(arena, arena_size, MADV_NOHUGEPAGE)) {
+      perror("madvise");
+    }
   }
 
   if (is_weighted_mbind) {

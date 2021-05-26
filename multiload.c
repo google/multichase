@@ -65,6 +65,7 @@
 typedef enum { RUN_CHASE, RUN_BANDWIDTH, RUN_CHASE_LOADED } test_type_t;
 static volatile uint64_t use_result_dummy = 0x0123456789abcdef;
 
+size_t default_page_size;
 int verbosity;
 int print_timestamp;
 int is_weighted_mbind;
@@ -725,9 +726,10 @@ static void *thread_start(void *data) {
     if (verbosity > 2)
       printf("thread_start(%d) memload generate buffers\n", args->x.thread_num);
     // generate buffers
-    args->x.load_arena = (char *)alloc_arena_mmap(args->x.load_total_memory +
-                                                  args->x.load_offset) +
-                         args->x.load_offset;
+    args->x.load_arena =
+        (char *)alloc_arena_mmap(default_page_size, args->x.load_total_memory +
+                                                        args->x.load_offset) +
+        args->x.load_offset;
     memset(args->x.load_arena, 1,
            args->x.load_total_memory);  // ensure pages are mapped
   }
@@ -779,6 +781,8 @@ int main(int argc, char **argv) {
   test_type_t run_test_type =
       RUN_CHASE;  // RUN_CHASE, RUN_BANDWIDTH, RUN_CHASE_LOADED
   struct generate_chase_common_args genchase_args;
+
+  default_page_size = get_native_page_size();
 
   genchase_args.total_memory = DEF_TOTAL_MEMORY;
   genchase_args.stride = DEF_STRIDE;
@@ -1107,14 +1111,16 @@ int main(int argc, char **argv) {
     // generate the chases by launching multiple threads
     if (verbosity > 2) printf("allocate genchase_args.arena\n");
     genchase_args.arena =
-        (char *)alloc_arena_mmap(genchase_args.total_memory + offset) + offset;
+        (char *)alloc_arena_mmap(default_page_size,
+                                 genchase_args.total_memory + offset) +
+        offset;
   }
   per_thread_t *thread_data =
-      alloc_arena_mmap(nr_threads * sizeof(per_thread_t));
+      alloc_arena_mmap(default_page_size, nr_threads * sizeof(per_thread_t));
   void *flush_arena = NULL;
   if (verbosity > 2) printf("allocate cache flush\n");
   if (cache_flush_size) {
-    flush_arena = alloc_arena_mmap(cache_flush_size);
+    flush_arena = alloc_arena_mmap(default_page_size, cache_flush_size);
     memset(flush_arena, 1, cache_flush_size);  // ensure pages are mapped
   }
 

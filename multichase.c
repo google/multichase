@@ -486,6 +486,7 @@ int main(int argc, char **argv) {
   char *p;
   int c;
   size_t i;
+  size_t default_page_size = get_native_page_size();
   size_t nr_threads = DEF_NR_THREADS;
   size_t nr_samples = DEF_NR_SAMPLES;
   size_t cache_flush_size = DEF_CACHE_FLUSH;
@@ -736,12 +737,14 @@ int main(int argc, char **argv) {
 
   // generate the chases by launching multiple threads
   genchase_args.arena =
-      (char *)alloc_arena_mmap(genchase_args.total_memory + offset) + offset;
+      (char *)alloc_arena_mmap(default_page_size,
+                               genchase_args.total_memory + offset) +
+      offset;
   per_thread_t *thread_data =
-      alloc_arena_mmap(nr_threads * sizeof(per_thread_t));
+      alloc_arena_mmap(default_page_size, nr_threads * sizeof(per_thread_t));
   void *flush_arena = NULL;
   if (cache_flush_size) {
-    flush_arena = alloc_arena_mmap(cache_flush_size);
+    flush_arena = alloc_arena_mmap(default_page_size, cache_flush_size);
     memset(flush_arena, 1, cache_flush_size);  // ensure pages are mapped
   }
 
