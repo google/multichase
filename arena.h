@@ -23,6 +23,6 @@
 size_t get_native_page_size(void);
 bool page_size_is_huge(size_t page_size);
 
-void *alloc_arena_mmap(size_t page_size, size_t arena_size);
+void *alloc_arena_mmap(size_t page_size, bool use_thp, size_t arena_size);
 
 #endif

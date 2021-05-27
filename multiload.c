@@ -65,8 +65,9 @@
 typedef enum { RUN_CHASE, RUN_BANDWIDTH, RUN_CHASE_LOADED } test_type_t;
 static volatile uint64_t use_result_dummy = 0x0123456789abcdef;
 
-size_t default_page_size;
-size_t page_size;
+static size_t default_page_size;
+static size_t page_size;
+static bool use_thp;
 int verbosity;
 int print_timestamp;
 int is_weighted_mbind;
@@ -727,10 +728,10 @@ static void *thread_start(void *data) {
     if (verbosity > 2)
       printf("thread_start(%d) memload generate buffers\n", args->x.thread_num);
     // generate buffers
-    args->x.load_arena =
-        (char *)alloc_arena_mmap(
-            page_size, args->x.load_total_memory + args->x.load_offset) +
-        args->x.load_offset;
+    args->x.load_arena = (char *)alloc_arena_mmap(
+                             page_size, use_thp,
+                             args->x.load_total_memory + args->x.load_offset) +
+                         args->x.load_offset;
     memset(args->x.load_arena, 1,
            args->x.load_total_memory);  // ensure pages are mapped
   }
@@ -792,7 +793,7 @@ int main(int argc, char **argv) {
 
   setvbuf(stdout, NULL, _IOLBF, BUFSIZ);
 
-  while ((c = getopt(argc, argv, "ac:l:F:p:m:n:oO:S:s:T:t:vXyW:")) != -1) {
+  while ((c = getopt(argc, argv, "ac:l:F:p:Hm:n:oO:S:s:T:t:vXyW:")) != -1) {
     switch (c) {
       case 'a':
         print_average = 1;
@@ -856,6 +857,9 @@ int main(int argc, char **argv) {
                   "with k, m, or g)\n");
           exit(1);
         }
+        break;
+      case 'H':
+        use_thp = true;
         break;
       case 'l':
         memload_optarg = optarg;
@@ -1016,6 +1020,9 @@ int main(int argc, char **argv) {
             DEF_CACHE_FLUSH);
     fprintf(stderr, "-p nnnn[kmg]   backing page size to use (default %zu)\n",
             default_page_size);
+    fprintf(
+        stderr,
+        "-H       use transparent hugepages (leave page size at default)\n");
     fprintf(stderr, "-m nnnn[kmg]   total memory size (default %zu)\n",
             DEF_TOTAL_MEMORY);
     fprintf(stderr,
@@ -1121,16 +1128,17 @@ int main(int argc, char **argv) {
 
     // generate the chases by launching multiple threads
     if (verbosity > 2) printf("allocate genchase_args.arena\n");
-    genchase_args.arena = (char *)alloc_arena_mmap(
-                              page_size, genchase_args.total_memory + offset) +
-                          offset;
+    genchase_args.arena =
+        (char *)alloc_arena_mmap(page_size, use_thp,
+                                 genchase_args.total_memory + offset) +
+        offset;
   }
-  per_thread_t *thread_data =
-      alloc_arena_mmap(default_page_size, nr_threads * sizeof(per_thread_t));
+  per_thread_t *thread_data = alloc_arena_mmap(
+      default_page_size, false, nr_threads * sizeof(per_thread_t));
   void *flush_arena = NULL;
   if (verbosity > 2) printf("allocate cache flush\n");
   if (cache_flush_size) {
-    flush_arena = alloc_arena_mmap(default_page_size, cache_flush_size);
+    flush_arena = alloc_arena_mmap(default_page_size, false, cache_flush_size);
     memset(flush_arena, 1, cache_flush_size);  // ensure pages are mapped
   }
 

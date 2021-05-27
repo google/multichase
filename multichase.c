@@ -488,6 +488,7 @@ int main(int argc, char **argv) {
   size_t i;
   size_t default_page_size = get_native_page_size();
   size_t page_size = default_page_size;
+  bool use_thp = false;
   size_t nr_threads = DEF_NR_THREADS;
   size_t nr_samples = DEF_NR_SAMPLES;
   size_t cache_flush_size = DEF_CACHE_FLUSH;
@@ -505,7 +506,7 @@ int main(int argc, char **argv) {
 
   setvbuf(stdout, NULL, _IOLBF, BUFSIZ);
 
-  while ((c = getopt(argc, argv, "ac:F:p:m:n:oO:S:s:T:t:vXyW:")) != -1) {
+  while ((c = getopt(argc, argv, "ac:F:p:Hm:n:oO:S:s:T:t:vXyW:")) != -1) {
     switch (c) {
       case 'a':
         print_average = 1;
@@ -552,6 +553,9 @@ int main(int argc, char **argv) {
                   "m, or g)\n");
           exit(1);
         }
+        break;
+      case 'H':
+        use_thp = true;
         break;
       case 'm':
         if (parse_mem_arg(optarg, &genchase_args.total_memory) ||
@@ -672,6 +676,9 @@ int main(int argc, char **argv) {
     fprintf(stderr, "-p page_size   backing page size to use (default %zu)\n",
             default_page_size);
     fprintf(stderr,
+            "-H             use transparent hugepages (leave page size at "
+            "default)\n");
+    fprintf(stderr,
             "-F nnnn[kmg]   amount of memory to use to flush the caches after "
             "constructing\n"
             "               the chase and before starting the benchmark (use "
@@ -748,13 +755,14 @@ int main(int argc, char **argv) {
 
   // generate the chases by launching multiple threads
   genchase_args.arena =
-      (char *)alloc_arena_mmap(page_size, genchase_args.total_memory + offset) +
+      (char *)alloc_arena_mmap(page_size, use_thp,
+                               genchase_args.total_memory + offset) +
       offset;
-  per_thread_t *thread_data =
-      alloc_arena_mmap(default_page_size, nr_threads * sizeof(per_thread_t));
+  per_thread_t *thread_data = alloc_arena_mmap(
+      default_page_size, false, nr_threads * sizeof(per_thread_t));
   void *flush_arena = NULL;
   if (cache_flush_size) {
-    flush_arena = alloc_arena_mmap(default_page_size, cache_flush_size);
+    flush_arena = alloc_arena_mmap(default_page_size, false, cache_flush_size);
     memset(flush_arena, 1, cache_flush_size);  // ensure pages are mapped
   }
 

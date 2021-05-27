@@ -114,7 +114,7 @@ static int get_page_size_flags(size_t page_size) {
   return MAP_HUGETLB | (lg << MAP_HUGE_SHIFT);
 }
 
-void *alloc_arena_mmap(size_t page_size, size_t arena_size) {
+void *alloc_arena_mmap(size_t page_size, bool use_thp, size_t arena_size) {
   void *arena;
   size_t pagemask = page_size - 1;
   int flags = MAP_PRIVATE | MAP_ANONYMOUS | get_page_size_flags(page_size);
@@ -128,9 +128,13 @@ void *alloc_arena_mmap(size_t page_size, size_t arena_size) {
 
   /* Explicitly disable THP for small pages. */
   if (!page_size_is_huge(page_size)) {
-    if (madvise(arena, arena_size, MADV_NOHUGEPAGE)) {
+    if (madvise(arena, arena_size, use_thp ? MADV_HUGEPAGE : MADV_NOHUGEPAGE)) {
       perror("madvise");
     }
+  } else if (use_thp) {
+    fprintf(stderr,
+            "Can't use transparent hugepages with a non-native page size.\n");
+    exit(1);
   }
 
   if (is_weighted_mbind) {
