@@ -154,16 +154,16 @@ static void chase_simple(per_thread_t *t)
 #else
 #define D(n)    p##n = *(void **)p##n;
 #endif
-template(2, 100, D(0) D(1))
-template(3,  66, D(0) D(1) D(2))
-template(4,  50, D(0) D(1) D(2) D(3))
-template(5,  40, D(0) D(1) D(2) D(3) D(4))
-template(6,  32, D(0) D(1) D(2) D(3) D(4) D(5))
+template(2, 100, D(0) D(1));
+template(3,  66, D(0) D(1) D(2));
+template(4,  50, D(0) D(1) D(2) D(3));
+template(5,  40, D(0) D(1) D(2) D(3) D(4));
+template(6,  32, D(0) D(1) D(2) D(3) D(4) D(5));
 #if MAX_PARALLEL > 6
-template(7,  28, D(0) D(1) D(2) D(3) D(4) D(5) D(6))
-template(8,  24, D(0) D(1) D(2) D(3) D(4) D(5) D(6) D(7))
-template(9,  22, D(0) D(1) D(2) D(3) D(4) D(5) D(6) D(7) D(8))
-template(10, 20, D(0) D(1) D(2) D(3) D(4) D(5) D(6) D(7) D(8) D(9))
+template(7,  28, D(0) D(1) D(2) D(3) D(4) D(5) D(6));
+template(8,  24, D(0) D(1) D(2) D(3) D(4) D(5) D(6) D(7));
+template(9,  22, D(0) D(1) D(2) D(3) D(4) D(5) D(6) D(7) D(8));
+template(10, 20, D(0) D(1) D(2) D(3) D(4) D(5) D(6) D(7) D(8) D(9));
 #endif
 #undef D
 #undef parallel
@@ -230,10 +230,10 @@ static void chase_incr(per_thread_t *t)
     /* we never actually reach here, but the compiler doesn't know that */      \
     t->x.cycle[0] = p;                      \
   }
-chase_prefetch(t0)
-chase_prefetch(t1)
-chase_prefetch(t2)
-chase_prefetch(nta)
+chase_prefetch(t0);
+chase_prefetch(t1);
+chase_prefetch(t2);
+chase_prefetch(nta);
 #undef chase_prefetch
 #endif
 
@@ -366,11 +366,11 @@ static const chase_t chases[] = {
     .usage2 = "perform prefetch"#type" before each deref",    \
     .requires_arg = 0,                \
     .parallelism = 1,                 \
-  },
-chase_prefetch(t0)
-chase_prefetch(t1)
-chase_prefetch(t2)
-chase_prefetch(nta)
+  }
+chase_prefetch(t0),
+chase_prefetch(t1),
+chase_prefetch(t2),
+chase_prefetch(nta),
 #endif
 #if defined(__x86_64__)
   {
@@ -400,17 +400,17 @@ chase_prefetch(nta)
     .usage1 = "parallel" #n,          \
     .usage2 = "alternate "#n" non-dependent chases in each thread", \
     .parallelism = n,                 \
-  },
-  PAR(2)
-  PAR(3)
-  PAR(4)
-  PAR(5)
-  PAR(6)
+  }
+  PAR(2),
+  PAR(3),
+  PAR(4),
+  PAR(5),
+  PAR(6),
 #if MAX_PARALLEL > 6
-  PAR(7)
-  PAR(8)
-  PAR(9)
-  PAR(10)
+  PAR(7),
+  PAR(8),
+  PAR(9),
+  PAR(10),
 #endif
 #undef PAR
 #if defined(__x86_64__)
@@ -1065,7 +1065,7 @@ usage:
   }
 
   rng_init(1);
- 
+
   if (run_test_type != RUN_BANDWIDTH) {
     generate_chase_mixer(&genchase_args);
 

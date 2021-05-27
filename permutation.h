@@ -15,6 +15,7 @@
 #define PERMUTATION_H_INCLUDED
 
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
 

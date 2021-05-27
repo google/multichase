@@ -14,6 +14,9 @@
 #ifndef ARENA_H_INCLUDED
 #define ARENA_H_INCLUDED
 
+#include <stddef.h>
+#include <stdint.h>
+
 #define MAX_MEM_NODES (8*sizeof(uint64_t))
 
 void *alloc_arena_shm(size_t arena_size);
