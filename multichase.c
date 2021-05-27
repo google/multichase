@@ -742,6 +742,7 @@ int main(int argc, char **argv) {
 
   if (verbosity > 0) {
     printf("nr_threads = %zu\n", nr_threads);
+    print_page_size(page_size, use_thp);
     printf("total_memory = %zu (%.1f MiB)\n", genchase_args.total_memory,
            genchase_args.total_memory / (1024. * 1024.));
     printf("stride = %zu\n", genchase_args.stride);

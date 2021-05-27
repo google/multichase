@@ -45,6 +45,37 @@ bool page_size_is_huge(size_t page_size) {
   return page_size > get_native_page_size();
 }
 
+void print_page_size(size_t page_size, bool use_thp) {
+  FILE *f;
+  size_t read;
+  /* Big enough to fit UINT64_MAX + '\n' + '\0'. */
+  char buf[22];
+
+  if (!use_thp) {
+    printf("page_size = %zu bytes\n", page_size);
+    return;
+  }
+
+  f = fopen("/sys/kernel/mm/transparent_hugepage/hpage_pmd_size", "r");
+  if (!f) goto err;
+
+  read = fread(buf, 1, sizeof(buf) - 1, f);
+  if (!feof(f) || (ferror(f) && !feof(f))) goto err;
+
+  if (fclose(f)) goto err;
+
+  if (buf[read - 1] == '\n') --read;
+  buf[read] = '\0';
+
+  printf("page_size = %s bytes (THP)\n", buf);
+  return;
+
+err:
+  perror(
+      "page_size = <failed to read "
+      "/sys/kernel/mm/transparent_hugepage/hpage_pmd_size>");
+}
+
 static inline int mbind(void *addr, unsigned long len, int mode,
                         unsigned long *nodemask, unsigned long maxnode,
                         unsigned flags) {
