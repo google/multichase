@@ -17,7 +17,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define MAX_MEM_NODES (8*sizeof(uint64_t))
+#define MAX_MEM_NODES (8 * sizeof(uint64_t))
 
 void *alloc_arena_shm(size_t arena_size);
 void *alloc_arena_mmap(size_t arena_size);

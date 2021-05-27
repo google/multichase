@@ -18,11 +18,10 @@
 #include <sys/time.h>
 #include <time.h>
 
-static inline uint64_t now_nsec(void)
-{
+static inline uint64_t now_nsec(void) {
   struct timespec ts;
   clock_gettime(CLOCK_MONOTONIC, &ts);
-  return ts.tv_sec * ((uint64_t)1000*1000*1000) + ts.tv_nsec;
+  return ts.tv_sec * ((uint64_t)1000 * 1000 * 1000) + ts.tv_nsec;
 }
 
 #endif

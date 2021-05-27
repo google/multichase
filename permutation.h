@@ -14,10 +14,10 @@
 #ifndef PERMUTATION_H_INCLUDED
 #define PERMUTATION_H_INCLUDED
 
+#include <assert.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <assert.h>
 
 typedef uint32_t perm_t;
 
@@ -39,28 +39,31 @@ int is_a_permutation(const perm_t *perm, size_t nr_elts);
 // unpredictable.
 //
 // the actual mixer is implemented as a large set of permutations on the
-// low bits of the element number.  the details are private to the implementation.
+// low bits of the element number.  the details are private to the
+// implementation.
 
 // these are the common args required for generating all chases (and the mixer).
 struct generate_chase_common_args {
-  char *arena;                  // memory used for all chases
-  size_t total_memory;          // size of the arena
-  size_t stride;                // size of each element
-  size_t tlb_locality;          // group accesses within this range in order to
-                                // amortize TLB fills
-  void (*gen_permutation)(perm_t *, size_t, size_t); // function for generating
-                                // permutations
-                                // typically gen_random_permutation
-  size_t nr_mixer_indices;      // number of mixer indices
-                                // typically stride/sizeof(void*)
-  const perm_t *mixer;          // the mixer function itself
+  char *arena;          // memory used for all chases
+  size_t total_memory;  // size of the arena
+  size_t stride;        // size of each element
+  size_t tlb_locality;  // group accesses within this range in order to
+                        // amortize TLB fills
+  void (*gen_permutation)(perm_t *, size_t,
+                          size_t);  // function for generating
+                                    // permutations
+                                    // typically gen_random_permutation
+  size_t nr_mixer_indices;          // number of mixer indices
+                                    // typically stride/sizeof(void*)
+  const perm_t *mixer;              // the mixer function itself
 };
 
 // create the mixer table
 void generate_chase_mixer(struct generate_chase_common_args *args);
 
 // create a chase for the given mixer_idx and return its first pointer
-void *generate_chase(const struct generate_chase_common_args *args, size_t mixer_idx);
+void *generate_chase(const struct generate_chase_common_args *args,
+                     size_t mixer_idx);
 
 //============================================================================
 // Modern multicore CPUs have increasingly large caches, so the LCRNG code
@@ -73,29 +76,27 @@ void *generate_chase(const struct generate_chase_common_args *args, size_t mixer
 // larger the state array, the better the random numbers will be.
 // 32 bytes was deemed to generate sufficient entropy.
 #define RNG_BUF_SIZE 32
-extern __thread char* rng_buf;
-extern __thread struct random_data* rand_state;
+extern __thread char *rng_buf;
+extern __thread struct random_data *rand_state;
 
-static inline void rng_init(unsigned thread_num)
-{
-        rng_buf = (char*)calloc(1, RNG_BUF_SIZE);
-        rand_state = (struct random_data*)calloc(1, sizeof(struct random_data));
-        assert(rand_state);
-        if (initstate_r(thread_num, rng_buf, RNG_BUF_SIZE, rand_state) != 0) {
-                perror("initstate_r");
-                exit(1);
-        }
+static inline void rng_init(unsigned thread_num) {
+  rng_buf = (char *)calloc(1, RNG_BUF_SIZE);
+  rand_state = (struct random_data *)calloc(1, sizeof(struct random_data));
+  assert(rand_state);
+  if (initstate_r(thread_num, rng_buf, RNG_BUF_SIZE, rand_state) != 0) {
+    perror("initstate_r");
+    exit(1);
+  }
 }
 
-static inline perm_t rng_int(perm_t limit)
-{
-        int r = 0;
-        if (random_r(rand_state, &r) != 0) {
-                perror("random_r");
-                exit(1);
-        }
-        // much more uniform to use [0.,1.) multiply than use an integer modulus
-        return (limit + 1) * (r / (RAND_MAX + 1.0));
+static inline perm_t rng_int(perm_t limit) {
+  int r = 0;
+  if (random_r(rand_state, &r) != 0) {
+    perror("random_r");
+    exit(1);
+  }
+  // much more uniform to use [0.,1.) multiply than use an integer modulus
+  return (limit + 1) * (r / (RAND_MAX + 1.0));
 }
 
 #endif
