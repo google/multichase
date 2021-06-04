@@ -114,6 +114,90 @@ static int get_page_size_flags(size_t page_size) {
   return MAP_HUGETLB | (lg << MAP_HUGE_SHIFT);
 }
 
+/*
+ * Reads a "state" file from sysfs at the given path, and returns the current
+ * state. The caller must free() the returned pointer when finished with it.
+ *
+ * The file must be formatted like this:
+ *
+ * state1 state2 [state3] state4
+ *
+ * The state surrounded by []s is the currently active one. It is returned
+ * as-is, including the surrounding []s.
+ */
+static char *read_sysfs_state_file(char const *path) {
+  FILE *f = fopen(path, "r");
+  char *token = NULL;
+  int ret;
+
+  if (f == NULL) {
+    perror("open sysfs state file");
+    exit(1);
+  }
+
+  while ((ret = fscanf(f, "%ms", &token)) == 1) {
+    if (token[0] == '[') break;
+
+    free(token);
+    token = NULL;
+  }
+
+  if (ferror(f) && !feof(f)) {
+    perror("read sysfs state file");
+    exit(1);
+  }
+
+  if (fclose(f)) {
+    perror("close sysfs state file");
+    exit(1);
+  }
+
+  return token;
+}
+
+static void write_sysfs_file(char const *path, char const *value) {
+  FILE *f = fopen(path, "w");
+
+  if (f == NULL) {
+    perror("open sysfs file for write");
+    exit(1);
+  }
+
+  if (fprintf(f, "%s\n", value) < 0) {
+    perror("write value to sysfs file");
+    exit(1);
+  }
+
+  if (fclose(f)) {
+    perror("close sysfs file");
+    exit(1);
+  }
+}
+
+/*
+ * In order for MADV_HUGEPAGE to work, THP configuration must be in one of
+ * several acceptable states. Check if the existing system configuration is
+ * acceptable, and if not, try to change the configuration.
+ */
+static void check_thp_state(void) {
+  char *enabled =
+      read_sysfs_state_file("/sys/kernel/mm/transparent_hugepage/enabled");
+  char *defrag =
+      read_sysfs_state_file("/sys/kernel/mm/transparent_hugepage/defrag");
+
+  if (strcmp(enabled, "[always]") && strcmp(enabled, "[madvise]")) {
+    write_sysfs_file("/sys/kernel/mm/transparent_hugepage/enabled", "madvise");
+  }
+
+  if (strcmp(defrag, "[always]") && strcmp(defrag, "[defer+madvise]") &&
+      strcmp(defrag, "[madvise]")) {
+    write_sysfs_file("/sys/kernel/mm/transparent_hugepage/defrag", "madvise");
+  }
+
+  free(enabled);
+  free(defrag);
+}
+
 void *alloc_arena_mmap(size_t page_size, bool use_thp, size_t arena_size) {
   void *arena;
   size_t pagemask = page_size - 1;
@@ -125,6 +209,8 @@ void *alloc_arena_mmap(size_t page_size, bool use_thp, size_t arena_size) {
     perror("mmap");
     exit(1);
   }
+
+  if (use_thp) check_thp_state();
 
   /* Explicitly disable THP for small pages. */
   if (!page_size_is_huge(page_size)) {
