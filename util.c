@@ -11,23 +11,35 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include <stdlib.h>
 #include "util.h"
 
-int parse_mem_arg(const char *str, size_t *result)
-{
-        size_t r;
-        char *p;
+#include <stdlib.h>
 
-        r = strtoull(str, &p, 0);
-        switch (*p) {
-        case 'k': case 'K': r *= 1024; ++p; break;
-        case 'm': case 'M': r *= 1024*1024; ++p; break;
-        case 'g': case 'G': r *= 1024*1024*1024; ++p; break;
-        }
-        if (*p) {
-                return -1;
-        }
-        *result = r;
-        return 0;
+int parse_mem_arg(const char *str, size_t *result) {
+  size_t r;
+  char *p;
+
+  r = strtoull(str, &p, 0);
+  switch (*p) {
+    case 'k':
+    case 'K':
+      r *= 1024;
+      ++p;
+      break;
+    case 'm':
+    case 'M':
+      r *= 1024 * 1024;
+      ++p;
+      break;
+    case 'g':
+    case 'G':
+      r *= 1024 * 1024 * 1024;
+      ++p;
+      break;
+  }
+  if (*p) {
+    return -1;
+  }
+  *result = r;
+  return 0;
 }

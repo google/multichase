@@ -14,6 +14,8 @@
 #ifndef UTIL_H_INCLUDED
 #define UTIL_H_INCLUDED
 
+#include <stddef.h>
+
 int parse_mem_arg(const char *str, size_t *result);
 
 #endif
