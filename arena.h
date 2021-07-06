@@ -14,12 +14,16 @@
 #ifndef ARENA_H_INCLUDED
 #define ARENA_H_INCLUDED
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
 #define MAX_MEM_NODES (8 * sizeof(uint64_t))
 
-void *alloc_arena_shm(size_t arena_size);
-void *alloc_arena_mmap(size_t arena_size);
+size_t get_native_page_size(void);
+bool page_size_is_huge(size_t page_size);
+void print_page_size(size_t page_size, bool use_thp);
+
+void *alloc_arena_mmap(size_t page_size, bool use_thp, size_t arena_size);
 
 #endif

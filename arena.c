@@ -29,14 +29,62 @@ extern int verbosity;
 extern int is_weighted_mbind;
 extern uint16_t mbind_weights[MAX_MEM_NODES];
 
+size_t get_native_page_size(void) {
+  long sz;
+
+  sz = sysconf(_SC_PAGESIZE);
+  if (sz < 0) {
+    perror("failed to get native page size");
+    exit(1);
+  }
+
+  return (size_t)sz;
+}
+
+bool page_size_is_huge(size_t page_size) {
+  return page_size > get_native_page_size();
+}
+
+void print_page_size(size_t page_size, bool use_thp) {
+  FILE *f;
+  size_t read;
+  /* Big enough to fit UINT64_MAX + '\n' + '\0'. */
+  char buf[22];
+
+  if (!use_thp) {
+    printf("page_size = %zu bytes\n", page_size);
+    return;
+  }
+
+  f = fopen("/sys/kernel/mm/transparent_hugepage/hpage_pmd_size", "r");
+  if (!f) goto err;
+
+  read = fread(buf, 1, sizeof(buf) - 1, f);
+  if (!feof(f) || (ferror(f) && !feof(f))) goto err;
+
+  if (fclose(f)) goto err;
+
+  if (buf[read - 1] == '\n') --read;
+  buf[read] = '\0';
+
+  printf("page_size = %s bytes (THP)\n", buf);
+  return;
+
+err:
+  perror(
+      "page_size = <failed to read "
+      "/sys/kernel/mm/transparent_hugepage/hpage_pmd_size>");
+}
+
 static inline int mbind(void *addr, unsigned long len, int mode,
                         unsigned long *nodemask, unsigned long maxnode,
                         unsigned flags) {
   return syscall(__NR_mbind, addr, len, mode, nodemask, maxnode, flags);
 }
 
-static void arena_weighted_mbind(void *arena, size_t arena_size,
-                                 uint16_t *weights, size_t nr_weights) {
+static void arena_weighted_mbind(size_t page_size, void *arena,
+                                 size_t arena_size, uint16_t *weights,
+                                 size_t nr_weights) {
   /* compute cumulative sum for weights
    * cumulative sum starts at -1
    * the method for determining a hit on a weight i is when the generated
@@ -52,12 +100,11 @@ static void arena_weighted_mbind(void *arena, size_t arena_size,
     weights_cumsum[i] = weights_cumsum[i - 1] + weights[i];
   }
   const int32_t weight_sum = weights_cumsum[nr_weights - 1] + 1;
-  const int pagesize = getpagesize();
 
   uint64_t mask = 0;
   char *q = (char *)arena + arena_size;
   rng_init(1);
-  for (char *p = arena; p < q; p += pagesize) {
+  for (char *p = arena; p < q; p += page_size) {
     uint32_t r = rng_int(1 << 31) % weight_sum;
     unsigned int node;
     for (node = 0; node < nr_weights; node++) {
@@ -66,7 +113,7 @@ static void arena_weighted_mbind(void *arena, size_t arena_size,
       }
     }
     mask = 1 << node;
-    if (mbind(p, pagesize, MPOL_BIND, &mask, nr_weights, MPOL_MF_STRICT)) {
+    if (mbind(p, page_size, MPOL_BIND, &mask, nr_weights, MPOL_MF_STRICT)) {
       perror("mbind");
       exit(1);
     }
@@ -75,78 +122,141 @@ static void arena_weighted_mbind(void *arena, size_t arena_size,
   free(weights_cumsum);
 }
 
-void *alloc_arena_mmap(size_t arena_size) {
+static int get_page_size_flags(size_t page_size) {
+  int lg = 0;
+
+  if (!page_size || (page_size & (page_size - 1))) {
+    fprintf(stderr, "page size must be a power of 2: %zu\n", page_size);
+    exit(1);
+  }
+
+  if (!page_size_is_huge(page_size)) {
+    return 0;
+  }
+
+  /*
+   * We need not just MAP_HUGETLB, but also a flag specifying the page size.
+   * mmap(2) says that these flags are defined as:
+   * log2(page size) << MAP_HUGE_SHIFT.
+   */
+  while (page_size >>= 1) {
+    ++lg;
+  }
+  return MAP_HUGETLB | (lg << MAP_HUGE_SHIFT);
+}
+
+/*
+ * Reads a "state" file from sysfs at the given path, and returns the current
+ * state. The caller must free() the returned pointer when finished with it.
+ *
+ * The file must be formatted like this:
+ *
+ * state1 state2 [state3] state4
+ *
+ * The state surrounded by []s is the currently active one. It is returned
+ * as-is, including the surrounding []s.
+ */
+static char *read_sysfs_state_file(char const *path) {
+  FILE *f = fopen(path, "r");
+  char *token = NULL;
+  int ret;
+
+  if (f == NULL) {
+    perror("open sysfs state file");
+    exit(1);
+  }
+
+  while ((ret = fscanf(f, "%ms", &token)) == 1) {
+    if (token[0] == '[') break;
+
+    free(token);
+    token = NULL;
+  }
+
+  if (ferror(f) && !feof(f)) {
+    perror("read sysfs state file");
+    exit(1);
+  }
+
+  if (fclose(f)) {
+    perror("close sysfs state file");
+    exit(1);
+  }
+
+  return token;
+}
+
+static void write_sysfs_file(char const *path, char const *value) {
+  FILE *f = fopen(path, "w");
+
+  if (f == NULL) {
+    perror("open sysfs file for write");
+    exit(1);
+  }
+
+  if (fprintf(f, "%s\n", value) < 0) {
+    perror("write value to sysfs file");
+    exit(1);
+  }
+
+  if (fclose(f)) {
+    perror("close sysfs file");
+    exit(1);
+  }
+}
+
+/*
+ * In order for MADV_HUGEPAGE to work, THP configuration must be in one of
+ * several acceptable states. Check if the existing system configuration is
+ * acceptable, and if not, try to change the configuration.
+ */
+static void check_thp_state(void) {
+  char *enabled =
+      read_sysfs_state_file("/sys/kernel/mm/transparent_hugepage/enabled");
+  char *defrag =
+      read_sysfs_state_file("/sys/kernel/mm/transparent_hugepage/defrag");
+
+  if (strcmp(enabled, "[always]") && strcmp(enabled, "[madvise]")) {
+    write_sysfs_file("/sys/kernel/mm/transparent_hugepage/enabled", "madvise");
+  }
+
+  if (strcmp(defrag, "[always]") && strcmp(defrag, "[defer+madvise]") &&
+      strcmp(defrag, "[madvise]")) {
+    write_sysfs_file("/sys/kernel/mm/transparent_hugepage/defrag", "madvise");
+  }
+
+  free(enabled);
+  free(defrag);
+}
+
+void *alloc_arena_mmap(size_t page_size, bool use_thp, size_t arena_size) {
   void *arena;
-  int pagemask = getpagesize() - 1;
+  size_t pagemask = page_size - 1;
+  int flags = MAP_PRIVATE | MAP_ANONYMOUS | get_page_size_flags(page_size);
 
   arena_size = (arena_size + pagemask) & ~pagemask;
-  arena = mmap(0, arena_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON,
-               -1, 0);
+  arena = mmap(0, arena_size, PROT_READ | PROT_WRITE, flags, -1, 0);
   if (arena == MAP_FAILED) {
     perror("mmap");
     exit(1);
   }
 
-  if (is_weighted_mbind) {
-    arena_weighted_mbind(arena, arena_size, mbind_weights, MAX_MEM_NODES);
-  }
-  return arena;
-}
+  if (use_thp) check_thp_state();
 
-#ifdef SHM_HUGETLB
-void *alloc_arena_shm(size_t arena_size) {
-  FILE *fh;
-  char buf[512];
-  size_t huge_page_size;
-  char *p;
-  int shmid;
-  void *arena;
-
-  // find Hugepagesize in /proc/meminfo
-  if ((fh = fopen("/proc/meminfo", "r")) == NULL) {
-    perror("open(/proc/meminfo)");
-    exit(1);
-  }
-  for (;;) {
-    if (fgets(buf, sizeof(buf) - 1, fh) == NULL) {
-      fprintf(stderr, "didn't find Hugepagesize in /proc/meminfo");
-      exit(1);
+  /* Explicitly disable THP for small pages. */
+  if (!page_size_is_huge(page_size)) {
+    if (madvise(arena, arena_size, use_thp ? MADV_HUGEPAGE : MADV_NOHUGEPAGE)) {
+      perror("madvise");
     }
-    buf[sizeof(buf) - 1] = '\0';
-    if (strncmp(buf, "Hugepagesize:", 13) == 0) break;
-  }
-  p = strchr(buf, ':') + 1;
-  huge_page_size = strtoul(p, 0, 0) * 1024;
-  fclose(fh);
-
-  // round the size up to multiple of huge_page_size
-  arena_size = (arena_size + huge_page_size - 1) & ~(huge_page_size - 1);
-
-  if (verbosity > 1) {
-    printf("attempting to shmget %zu bytes\n", arena_size);
-  }
-
-  shmid = shmget(IPC_PRIVATE, arena_size,
-                 IPC_CREAT | IPC_EXCL | SHM_HUGETLB | 0600);
-  if (shmid == -1) {
-    perror("shmget");
+  } else if (use_thp) {
+    fprintf(stderr,
+            "Can't use transparent hugepages with a non-native page size.\n");
     exit(1);
   }
 
-  arena = shmat(shmid, NULL, 0);
-  if (arena == (void *)-1) {
-    perror("shmat");
-    exit(1);
+  if (is_weighted_mbind) {
+    arena_weighted_mbind(page_size, arena, arena_size, mbind_weights,
+                         MAX_MEM_NODES);
   }
-
-  if (shmctl(shmid, IPC_RMID, 0) == -1) {
-    perror("shmctl warning");
-  }
-
   return arena;
 }
-#else
-void *alloc_arena_shm(size_t arena_size) {
-  return alloc_arena_mmap(arena_size);
-}
-#endif

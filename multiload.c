@@ -65,6 +65,9 @@
 typedef enum { RUN_CHASE, RUN_BANDWIDTH, RUN_CHASE_LOADED } test_type_t;
 static volatile uint64_t use_result_dummy = 0x0123456789abcdef;
 
+static size_t default_page_size;
+static size_t page_size;
+static bool use_thp;
 int verbosity;
 int print_timestamp;
 int is_weighted_mbind;
@@ -96,12 +99,11 @@ typedef union {
     void *flush_arena;
     size_t cache_flush_size;
 
-    test_type_t run_test_type;     // test type: chase or memory bandwidth
-    const chase_t *memload;        // memory bandwidth function
-    void *(*alloc_arena)(size_t);  // memory allocation function
-    char *load_arena;              // load memory buffer used by this thread
-    size_t load_total_memory;      // load size of the arena
-    size_t load_offset;            // load offset of the arena
+    test_type_t run_test_type;  // test type: chase or memory bandwidth
+    const chase_t *memload;     // memory bandwidth function
+    char *load_arena;           // load memory buffer used by this thread
+    size_t load_total_memory;   // load size of the arena
+    size_t load_offset;         // load offset of the arena
     size_t load_tlb_locality;   // group accesses within this range in order to
                                 // amortize TLB fills
     volatile size_t sample_no;  // flag from main thread to tell bandwdith
@@ -726,8 +728,9 @@ static void *thread_start(void *data) {
     if (verbosity > 2)
       printf("thread_start(%d) memload generate buffers\n", args->x.thread_num);
     // generate buffers
-    args->x.load_arena = (char *)args->x.alloc_arena(args->x.load_total_memory +
-                                                     args->x.load_offset) +
+    args->x.load_arena = (char *)alloc_arena_mmap(
+                             page_size, use_thp,
+                             args->x.load_total_memory + args->x.load_offset) +
                          args->x.load_offset;
     memset(args->x.load_arena, 1,
            args->x.load_total_memory);  // ensure pages are mapped
@@ -767,7 +770,6 @@ int main(int argc, char **argv) {
   char *p;
   int c;
   size_t i;
-  void *(*alloc_arena)(size_t) = alloc_arena_mmap;
   size_t nr_threads = DEF_NR_THREADS;
   size_t nr_samples = DEF_NR_SAMPLES;
   size_t cache_flush_size = DEF_CACHE_FLUSH;
@@ -782,14 +784,16 @@ int main(int argc, char **argv) {
       RUN_CHASE;  // RUN_CHASE, RUN_BANDWIDTH, RUN_CHASE_LOADED
   struct generate_chase_common_args genchase_args;
 
+  default_page_size = page_size = get_native_page_size();
+
   genchase_args.total_memory = DEF_TOTAL_MEMORY;
   genchase_args.stride = DEF_STRIDE;
-  genchase_args.tlb_locality = DEF_TLB_LOCALITY * getpagesize();
+  genchase_args.tlb_locality = DEF_TLB_LOCALITY * default_page_size;
   genchase_args.gen_permutation = gen_random_permutation;
 
   setvbuf(stdout, NULL, _IOLBF, BUFSIZ);
 
-  while ((c = getopt(argc, argv, "ac:l:F:Hm:n:oO:S:s:T:t:vXyW:")) != -1) {
+  while ((c = getopt(argc, argv, "ac:l:F:p:Hm:n:oO:S:s:T:t:vXyW:")) != -1) {
     switch (c) {
       case 'a':
         print_average = 1;
@@ -845,6 +849,17 @@ int main(int argc, char **argv) {
                   "(suffixed with k, m, or g)\n");
           exit(1);
         }
+        break;
+      case 'p':
+        if (parse_mem_arg(optarg, &page_size)) {
+          fprintf(stderr,
+                  "Error: page_size must be a non-negative integer (suffixed "
+                  "with k, m, or g)\n");
+          exit(1);
+        }
+        break;
+      case 'H':
+        use_thp = true;
         break;
       case 'l':
         memload_optarg = optarg;
@@ -936,9 +951,6 @@ int main(int argc, char **argv) {
       case 'v':
         ++verbosity;
         break;
-      case 'H':
-        alloc_arena = alloc_arena_shm;
-        break;
       case 'W':
         is_weighted_mbind = 1;
         char *tok = NULL, *saveptr = NULL;
@@ -1006,9 +1018,11 @@ int main(int argc, char **argv) {
             "with nta)\n"
             "         default: %zu\n",
             DEF_CACHE_FLUSH);
+    fprintf(stderr, "-p nnnn[kmg]   backing page size to use (default %zu)\n",
+            default_page_size);
     fprintf(
         stderr,
-        "-H       use SHM_HUGETLB for huge page allocation (if supported)\n");
+        "-H       use transparent hugepages (leave page size at default)\n");
     fprintf(stderr, "-m nnnn[kmg]   total memory size (default %zu)\n",
             DEF_TOTAL_MEMORY);
     fprintf(stderr,
@@ -1026,7 +1040,7 @@ int main(int argc, char **argv) {
         DEF_OFFSET);
     fprintf(stderr, "-s nnnn[kmg]   stride size (default %zu)\n", DEF_STRIDE);
     fprintf(stderr, "-T nnnn[kmg]   TLB locality in bytes (default %zu)\n",
-            DEF_TLB_LOCALITY * getpagesize());
+            DEF_TLB_LOCALITY * default_page_size);
     fprintf(stderr,
             "         NOTE: TLB locality will be rounded down to a multiple of "
             "stride\n");
@@ -1094,6 +1108,7 @@ int main(int argc, char **argv) {
 
   if (verbosity > 0) {
     printf("nr_threads = %zu\n", nr_threads);
+    print_page_size(page_size, use_thp);
     printf("total_memory = %zu (%.1f MiB)\n", genchase_args.total_memory,
            genchase_args.total_memory / (1024. * 1024.));
     printf("stride = %zu\n", genchase_args.stride);
@@ -1115,14 +1130,16 @@ int main(int argc, char **argv) {
     // generate the chases by launching multiple threads
     if (verbosity > 2) printf("allocate genchase_args.arena\n");
     genchase_args.arena =
-        (char *)alloc_arena(genchase_args.total_memory + offset) + offset;
+        (char *)alloc_arena_mmap(page_size, use_thp,
+                                 genchase_args.total_memory + offset) +
+        offset;
   }
-  per_thread_t *thread_data =
-      alloc_arena_mmap(nr_threads * sizeof(per_thread_t));
+  per_thread_t *thread_data = alloc_arena_mmap(
+      default_page_size, false, nr_threads * sizeof(per_thread_t));
   void *flush_arena = NULL;
   if (verbosity > 2) printf("allocate cache flush\n");
   if (cache_flush_size) {
-    flush_arena = alloc_arena_mmap(cache_flush_size);
+    flush_arena = alloc_arena_mmap(default_page_size, false, cache_flush_size);
     memset(flush_arena, 1, cache_flush_size);  // ensure pages are mapped
   }
 
@@ -1138,7 +1155,6 @@ int main(int argc, char **argv) {
     thread_data[i].x.flush_arena = flush_arena;
     thread_data[i].x.cache_flush_size = cache_flush_size;
     thread_data[i].x.memload = memload;
-    thread_data[i].x.alloc_arena = alloc_arena;  // memory allocaton method
     thread_data[i].x.load_arena = NULL;  // memory buffer used by this thread
     thread_data[i].x.load_total_memory =
         genchase_args.total_memory;         // size of the arena
