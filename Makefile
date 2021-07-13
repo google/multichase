@@ -18,8 +18,10 @@ LDLIBS=-lrt -lm
 ARCH ?= $(shell uname -m)
 
 ifeq ($(ARCH),aarch64)
- CAP ?= $(shell cat /proc/cpuinfo | grep atomics | head -1)
- ifneq (,$(findstring atomics,$(CAP)))
+ CAP ?= $(shell cat /proc/cpuinfo | grep -E 'atomics|sve' | head -1)
+ ifneq (,$(findstring sve,$(CAP)))
+  CFLAGS+=-march=armv8.2-a+sve
+ else ifneq (,$(findstring atomics,$(CAP)))
   CFLAGS+=-march=armv8.1-a+lse
  endif
 endif
