@@ -19,7 +19,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-typedef uint32_t perm_t;
+typedef size_t perm_t;
 
 void gen_random_permutation(perm_t *perm, size_t nr, size_t base);
 void gen_ordered_permutation(perm_t *perm, size_t nr, size_t base);
@@ -90,13 +90,22 @@ static inline void rng_init(unsigned thread_num) {
 }
 
 static inline perm_t rng_int(perm_t limit) {
-  int r = 0;
-  if (random_r(rand_state, &r) != 0) {
+  int r1, r2, r3, r4;
+  uint64_t r;
+
+  if (random_r(rand_state, &r1) || random_r(rand_state, &r2)
+    || random_r(rand_state, &r3) || random_r(rand_state, &r4)) {
     perror("random_r");
     exit(1);
   }
-  // much more uniform to use [0.,1.) multiply than use an integer modulus
-  return (limit + 1) * (r / (RAND_MAX + 1.0));
+  // Assume that RAND_MAX is at least 16-bit long
+  _Static_assert (RAND_MAX >= (1ul << 16), "RAND_MAX is too small");
+  r = (((uint64_t)r1 <<  0) & 0x000000000000FFFFull) |
+      (((uint64_t)r2 << 16) & 0x00000000FFFF0000ull) |
+      (((uint64_t)r3 << 32) & 0x0000FFFF00000000ull) |
+      (((uint64_t)r4 << 48) & 0xFFFF000000000000ull);
+
+  return r % (limit + 1);
 }
 
 #endif

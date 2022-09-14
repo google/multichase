@@ -1086,15 +1086,6 @@ int main(int argc, char **argv) {
         genchase_args.total_memory % genchase_args.tlb_locality;
   }
 
-  if (sizeof(perm_t) < sizeof(size_t) &&
-      ((uint64_t)genchase_args.total_memory / genchase_args.stride) !=
-          (genchase_args.total_memory / genchase_args.stride)) {
-    fprintf(stderr,
-            "too many elements required -- maximum supported is %" PRIu64 "\n",
-            (UINT64_C(1) << 8 * sizeof(perm_t)));
-    exit(1);
-  }
-
   genchase_args.nr_mixer_indices =
       genchase_args.stride / chase->base_object_size;
   if ((run_test_type == RUN_CHASE) &&
