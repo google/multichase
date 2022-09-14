@@ -171,7 +171,6 @@ void *generate_chase(const struct generate_chase_common_args *args,
   for (i = 0; i < nr_elts; ++i) {
     size_t next;
     dassert(perm[perm_inverse[i]] == i);
-    assert(*(void **)(arena + MIXED(i)) == NULL);
     next = perm_inverse[i] + 1;
     next = (next == nr_elts) ? 0 : next;
     *(void **)(arena + MIXED(i)) = (void *)(arena + MIXED(perm[next]));

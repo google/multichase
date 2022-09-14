@@ -730,8 +730,8 @@ static void *thread_start(void *data) {
     // generate buffers
     args->x.load_arena = (char *)alloc_arena_mmap(
                              page_size, use_thp,
-                             args->x.load_total_memory + args->x.load_offset) +
-                         args->x.load_offset;
+                             args->x.load_total_memory + args->x.load_offset,
+                             -1) + args->x.load_offset;
     memset(args->x.load_arena, 1,
            args->x.load_total_memory);  // ensure pages are mapped
   }
@@ -1131,15 +1131,16 @@ int main(int argc, char **argv) {
     if (verbosity > 2) printf("allocate genchase_args.arena\n");
     genchase_args.arena =
         (char *)alloc_arena_mmap(page_size, use_thp,
-                                 genchase_args.total_memory + offset) +
+                                 genchase_args.total_memory + offset, -1) +
         offset;
   }
   per_thread_t *thread_data = alloc_arena_mmap(
-      default_page_size, false, nr_threads * sizeof(per_thread_t));
+      default_page_size, false, nr_threads * sizeof(per_thread_t), -1);
   void *flush_arena = NULL;
   if (verbosity > 2) printf("allocate cache flush\n");
   if (cache_flush_size) {
-    flush_arena = alloc_arena_mmap(default_page_size, false, cache_flush_size);
+    flush_arena = alloc_arena_mmap(default_page_size, false, cache_flush_size,
+                                   -1);
     memset(flush_arena, 1, cache_flush_size);  // ensure pages are mapped
   }
 
