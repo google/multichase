@@ -49,6 +49,8 @@ struct generate_chase_common_args {
   size_t stride;        // size of each element
   size_t tlb_locality;  // group accesses within this range in order to
                         // amortize TLB fills
+  size_t nr_mixers;     // Rounded up to power of two number of mixers:
+                        // nr_threads * parallelism rounded up to power of two
   void (*gen_permutation)(perm_t *, size_t,
                           size_t);  // function for generating
                                     // permutations
@@ -59,7 +61,8 @@ struct generate_chase_common_args {
 };
 
 // create the mixer table
-void generate_chase_mixer(struct generate_chase_common_args *args);
+void generate_chase_mixer(struct generate_chase_common_args *args,
+                          size_t nr_mixers);
 
 // create a chase for the given mixer_idx and return its first pointer
 void *generate_chase(const struct generate_chase_common_args *args,

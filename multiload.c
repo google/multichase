@@ -1116,7 +1116,7 @@ int main(int argc, char **argv) {
   rng_init(1);
 
   if (run_test_type != RUN_BANDWIDTH) {
-    generate_chase_mixer(&genchase_args);
+    generate_chase_mixer(&genchase_args, nr_threads * chase->parallelism);
 
     // generate the chases by launching multiple threads
     if (verbosity > 2) printf("allocate genchase_args.arena\n");
