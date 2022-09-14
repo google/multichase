@@ -860,6 +860,4 @@ int main(int argc, char **argv) {
   printf("%6.*f\n", res < 100. ? 3 : 1, res);
 
   exit(0);
-
-  return 0;
 }
