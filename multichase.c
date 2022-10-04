@@ -490,6 +490,7 @@ int main(int argc, char **argv) {
   size_t default_page_size = get_native_page_size();
   size_t page_size = default_page_size;
   bool use_thp = false;
+  bool use_malloc = false;
   size_t nr_threads = DEF_NR_THREADS;
   size_t nr_samples = DEF_NR_SAMPLES;
   size_t cache_flush_size = DEF_CACHE_FLUSH;
@@ -508,7 +509,7 @@ int main(int argc, char **argv) {
 
   setvbuf(stdout, NULL, _IOLBF, BUFSIZ);
 
-  while ((c = getopt(argc, argv, "ac:F:p:Hm:n:oO:S:s:T:t:vXyW:f:")) != -1) {
+  while ((c = getopt(argc, argv, "ac:F:p:Hm:n:oO:S:s:T:t:vXyW:f:M")) != -1) {
     switch (c) {
       case 'a':
         print_average = 1;
@@ -570,6 +571,9 @@ int main(int argc, char **argv) {
       case 'H':
         use_thp = true;
         break;
+      case 'M':
+         use_malloc = true;
+	 break;
       case 'm':
         if (parse_mem_arg(optarg, &genchase_args.total_memory) ||
             genchase_args.total_memory == 0) {
@@ -693,6 +697,8 @@ int main(int argc, char **argv) {
             "-H             use transparent hugepages (leave page size at "
             "default)\n");
     fprintf(stderr,
+            "-M             use malloc instead of mmap to allocate arena\n");
+    fprintf(stderr,
             "-F nnnn[kmg]   amount of memory to use to flush the caches after "
             "constructing\n"
             "               the chase and before starting the benchmark (use "
@@ -753,6 +759,7 @@ int main(int argc, char **argv) {
     printf("stride = %zu\n", genchase_args.stride);
     printf("tlb_locality = %zu\n", genchase_args.tlb_locality);
     printf("chase = %s\n", chase_optarg);
+    if (use_malloc) printf("malloc allocation\n");
   }
 
   rng_init(1);
@@ -760,10 +767,19 @@ int main(int argc, char **argv) {
   generate_chase_mixer(&genchase_args, nr_threads * chase->parallelism);
 
   // generate the chases by launching multiple threads
-  genchase_args.arena =
-      (char *)alloc_arena_mmap(page_size, use_thp,
-                               genchase_args.total_memory + offset, fd) +
-      offset;
+  if (use_malloc) {
+    genchase_args.arena = (char *)malloc(genchase_args.total_memory + offset) +
+        offset;
+    if (!genchase_args.arena) {
+      perror("malloc");
+      exit(1);
+    }
+  } else {
+    genchase_args.arena =
+        (char *)alloc_arena_mmap(page_size, use_thp,
+                                 genchase_args.total_memory + offset, fd) +
+        offset;
+  }
   per_thread_t *thread_data = alloc_arena_mmap(
       default_page_size, false, nr_threads * sizeof(per_thread_t), -1);
   void *flush_arena = NULL;
