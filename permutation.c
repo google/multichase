@@ -62,7 +62,7 @@ int is_a_permutation(const perm_t *perm, size_t nr_elts) {
   size_t vec_len = (nr_elts + 7) / 8;
   size_t i;
 
-  vec = malloc(vec_len);
+  vec = (uint8_t *)malloc(vec_len);
   memset(vec, 0, vec_len);
 
   for (i = 0; i < nr_elts; ++i) {
@@ -100,13 +100,13 @@ void generate_chase_mixer(struct generate_chase_common_args *args,
                           __builtin_clzl(nr_mixers - 1));
   if (verbosity > 1)
     printf("nr_mixers = %zu\n", args->nr_mixers);
-  perm_t *t = malloc(nr_mixer_indices * sizeof(*t));
+  perm_t *t = (perm_t *)malloc(nr_mixer_indices * sizeof(*t));
   if (t == NULL) {
     fprintf(stderr, "Could not allocate %lu bytes, check stride/memory size?\n",
             nr_mixer_indices * sizeof(*t));
     exit(1);
   }
-  perm_t *r = malloc(nr_mixer_indices * args->nr_mixers * sizeof(*r));
+  perm_t *r = (perm_t *)malloc(nr_mixer_indices * args->nr_mixers * sizeof(*r));
   if (r == NULL) {
     fprintf(stderr, "Could not allocate %lu bytes, check stride/memory size?\n",
             nr_mixer_indices * args->nr_mixers * sizeof(*r));
@@ -151,9 +151,9 @@ void *generate_chase(const struct generate_chase_common_args *args,
   if (verbosity > 1)
     printf("generating permutation of %zu elements (in %zu TLB groups)\n",
            nr_elts, nr_tlb_groups);
-  tlb_perm = malloc(nr_tlb_groups * sizeof(*tlb_perm));
+  tlb_perm = (perm_t *)malloc(nr_tlb_groups * sizeof(*tlb_perm));
   gen_permutation(tlb_perm, nr_tlb_groups, 0);
-  perm = malloc(nr_elts * sizeof(*perm));
+  perm = (perm_t *)malloc(nr_elts * sizeof(*perm));
   for (i = 0; i < nr_tlb_groups; ++i) {
     gen_permutation(&perm[i * nr_elts_per_tlb], nr_elts_per_tlb,
                     tlb_perm[i] * nr_elts_per_tlb);
@@ -163,7 +163,7 @@ void *generate_chase(const struct generate_chase_common_args *args,
   dassert(is_a_permutation(perm, nr_elts));
 
   if (verbosity > 1) printf("generating inverse permtuation\n");
-  perm_inverse = malloc(nr_elts * sizeof(*perm));
+  perm_inverse = (perm_t *)malloc(nr_elts * sizeof(*perm));
   for (i = 0; i < nr_elts; ++i) {
     perm_inverse[perm[i]] = i;
   }
@@ -217,7 +217,7 @@ void *generate_chase_long(const struct generate_chase_common_args *args,
     printf("generating permutation of %zu elements (in %zu TLB groups)\n",
            nr_elts, nr_tlb_groups);
 
-  perm = malloc(nr_iteration * nr_elts * sizeof(*perm));
+  perm = (perm_t *)malloc(nr_iteration * nr_elts * sizeof(*perm));
   if (perm == NULL) {
     fprintf(stderr, "Could not allocate %lu bytes\n",
             nr_iteration * nr_elts * sizeof(*perm));
@@ -228,7 +228,7 @@ void *generate_chase_long(const struct generate_chase_common_args *args,
   for (j = 0; j < nr_iteration; j++) {
     base = j * nr_elts;
 
-    tlb_perm = malloc(nr_tlb_groups * sizeof(*tlb_perm));
+    tlb_perm = (perm_t *)malloc(nr_tlb_groups * sizeof(*tlb_perm));
     if (tlb_perm == NULL) {
       fprintf(stderr, "Could not allocate %lu bytes\n",
               nr_tlb_groups * sizeof(*tlb_perm));
@@ -250,7 +250,8 @@ void *generate_chase_long(const struct generate_chase_common_args *args,
 
   dassert(is_a_permutation(perm, nr_iteration * nr_elts));
 
-  perm_inverse = malloc(nr_iteration * nr_elts * sizeof(*perm_inverse));
+  perm_inverse = (perm_t *)malloc(nr_iteration * nr_elts *
+                    sizeof(*perm_inverse));
   if (perm_inverse == NULL) {
     fprintf(stderr, "Could not allocate %lu bytes\n",
             nr_iteration * nr_elts * sizeof(*perm_inverse));
@@ -286,10 +287,10 @@ void *generate_chase_long(const struct generate_chase_common_args *args,
     if (perm[next]%nr_elts == 0) {
       // If current iteration of permutation is finished,
       // new position is the start of next iteration.
-      size_t new = (i/nr_elts + 1) * nr_elts;
-      new = (new == nr_iteration * nr_elts) ? 0 : new;
+      size_t new_pos = (i/nr_elts + 1) * nr_elts;
+      new_pos = (new_pos == nr_iteration * nr_elts) ? 0 : new_pos;
       *(void **)(arena + MIXED_2(i%nr_elts,i/nr_elts, args->nr_mixers)) =
-        (void *)(arena + MIXED_2(new%nr_elts,new/nr_elts, args->nr_mixers));
+        (void *)(arena + MIXED_2(new_pos%nr_elts,new_pos/nr_elts, args->nr_mixers));
     } else {
       *(void **)(arena + MIXED_2(i%nr_elts,i/nr_elts, args->nr_mixers)) =
         (void *)(arena + MIXED_2(perm[next]%nr_elts,perm[next]/nr_elts, args->nr_mixers));

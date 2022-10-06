@@ -11,7 +11,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+#endif
 #include <errno.h>
 #include <inttypes.h>
 #include <pthread.h>
@@ -69,7 +71,8 @@ static void common_setup(thread_args_t *args) {
 
   // test if we're supposed to allocate the pingpong_mutex memory
   if (args->me == 0) {
-    pingpong_mutex = mmap(0, getpagesize(), PROT_READ | PROT_WRITE,
+    pingpong_mutex = (atomic_t *)mmap(0, getpagesize(),
+                          PROT_READ | PROT_WRITE,
                           MAP_ANON | MAP_PRIVATE, -1, 0);
     if (pingpong_mutex == MAP_FAILED) {
       perror("mmap");
@@ -128,9 +131,9 @@ static void common_setup(thread_args_t *args) {
 
 template(locked_loop, __sync_bool_compare_and_swap)
 
-    static inline int unlocked_xchg(atomic_t *p, atomic_t old, atomic_t new) {
+    static inline int unlocked_xchg(atomic_t *p, atomic_t old, atomic_t new_a) {
   if (*(volatile atomic_t *)p == old) {
-    *(volatile atomic_t *)p = new;
+    *(volatile atomic_t *)p = new_a;
     return 1;
   }
   return 0;

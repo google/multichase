@@ -11,7 +11,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+#endif
 #include <errno.h>
 #include <inttypes.h>
 #include <math.h>
@@ -66,7 +68,7 @@ static void wait_for_startup(void) {
 }
 
 static void *worker(void *_args) {
-  per_thread_t *args = _args;
+  per_thread_t *args = (per_thread_t *)_args;
 
   // move to our target cpu
   cpu_set_t cpu;
@@ -162,7 +164,8 @@ int main(int argc, char **argv) {
     }
   }
 
-  per_thread_t *thread_args = calloc(nr_threads, sizeof(*thread_args));
+  per_thread_t *thread_args = (per_thread_t *)calloc(nr_threads,
+      sizeof(*thread_args));
   nr_to_startup = nr_threads + 1;
   size_t u;
   i = 0;
@@ -182,7 +185,7 @@ int main(int argc, char **argv) {
 
   wait_for_startup();
 
-  atomic_t *samples = calloc(nr_threads, sizeof(*samples));
+  atomic_t *samples = (atomic_t *)calloc(nr_threads, sizeof(*samples));
 
   printf(
       "results are avg latency per locked increment in ns, one column per "

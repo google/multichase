@@ -19,6 +19,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#if !defined __cplusplus
+#define static_assert _Static_assert
+#endif
+
 typedef size_t perm_t;
 
 void gen_random_permutation(perm_t *perm, size_t nr, size_t base);
@@ -107,7 +111,7 @@ static inline perm_t rng_int(perm_t limit) {
     exit(1);
   }
   // Assume that RAND_MAX is at least 16-bit long
-  _Static_assert (RAND_MAX >= (1ul << 16), "RAND_MAX is too small");
+  static_assert (RAND_MAX >= (1ul << 16), "RAND_MAX is too small");
   r = (((uint64_t)r1 <<  0) & 0x000000000000FFFFull) |
       (((uint64_t)r2 << 16) & 0x00000000FFFF0000ull) |
       (((uint64_t)r3 << 32) & 0x0000FFFF00000000ull) |

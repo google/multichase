@@ -82,7 +82,7 @@ static inline int mbind(void *addr, unsigned long len, int mode,
   return syscall(__NR_mbind, addr, len, mode, nodemask, maxnode, flags);
 }
 
-static void arena_weighted_mbind(size_t page_size, void *arena,
+static void arena_weighted_mbind(size_t page_size, char *arena,
                                  size_t arena_size, uint16_t *weights,
                                  size_t nr_weights) {
   /* compute cumulative sum for weights
@@ -90,7 +90,7 @@ static void arena_weighted_mbind(size_t page_size, void *arena,
    * the method for determining a hit on a weight i is when the generated
    * random number (modulo sum of weights) <= weights_cumsum[i]
    */
-  int64_t *weights_cumsum = malloc(nr_weights * sizeof(int64_t));
+  int64_t *weights_cumsum = (int64_t *)malloc(nr_weights * sizeof(int64_t));
   if (!weights_cumsum) {
     fprintf(stderr, "Couldn't allocate memory for weights.\n");
     exit(1);
@@ -102,7 +102,7 @@ static void arena_weighted_mbind(size_t page_size, void *arena,
   const int32_t weight_sum = weights_cumsum[nr_weights - 1] + 1;
 
   uint64_t mask = 0;
-  char *q = (char *)arena + arena_size;
+  char *q = arena + arena_size;
   rng_init(1);
   for (char *p = arena; p < q; p += page_size) {
     uint32_t r = rng_int(1 << 31) % weight_sum;
@@ -230,7 +230,7 @@ static void check_thp_state(void) {
 }
 
 void *alloc_arena_mmap(size_t page_size, bool use_thp, size_t arena_size, int fd) {
-  void *arena;
+  char *arena;
   size_t pagemask = page_size - 1;
   int flags;
 
@@ -240,7 +240,7 @@ void *alloc_arena_mmap(size_t page_size, bool use_thp, size_t arena_size, int fd
     flags = MAP_SHARED;
 
   arena_size = (arena_size + pagemask) & ~pagemask;
-  arena = mmap(0, arena_size, PROT_READ | PROT_WRITE, flags, fd, 0);
+  arena = (char *)mmap(0, arena_size, PROT_READ | PROT_WRITE, flags, fd, 0);
   if (arena == MAP_FAILED) {
     perror("mmap");
     exit(1);

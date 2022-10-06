@@ -11,7 +11,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+#endif
 #include <alloca.h>
 #include <errno.h>
 #include <inttypes.h>
@@ -194,10 +196,10 @@ struct incr_struct {
 };
 
 static void chase_incr(per_thread_t *t) {
-  struct incr_struct *p = t->x.cycle[0];
+  struct incr_struct *p = (struct incr_struct *)t->x.cycle[0];
 
   do {
-    x50(++p->incme; p = *(void **)p;)
+    x50(++p->incme; p = (struct incr_struct *)*(void **)p;)
   } while (__sync_add_and_fetch(&t->x.count, 50));
 
   // we never actually reach here, but the compiler doesn't know that
@@ -651,7 +653,7 @@ static size_t nr_to_startup;
 static int set_thread_affinity = 1;
 
 static void *thread_start(void *data) {
-  per_thread_t *args = data;
+  per_thread_t *args = (per_thread_t *)data;
 
   // ensure every thread has a different RNG
   rng_init(args->x.thread_num);
@@ -692,7 +694,7 @@ static void *thread_start(void *data) {
     // handle critword2 chases
     if (strcmp(args->x.chase->name, "critword2") == 0) {
       size_t offset = strtoul(args->x.extra_args, 0, 0);
-      char *p = args->x.cycle[0];
+      char *p = (char *)args->x.cycle[0];
       char *q = p;
       do {
         char *next = *(char **)p;
@@ -703,7 +705,7 @@ static void *thread_start(void *data) {
     // handle critword chases
     if (strcmp(args->x.chase->name, "critword") == 0) {
       size_t offset = strtoul(args->x.extra_args, 0, 0);
-      char *p = args->x.cycle[0];
+      char *p = (char *)args->x.cycle[0];
       char *q = p;
       do {
         char *next = *(char **)p;
@@ -715,7 +717,7 @@ static void *thread_start(void *data) {
     // now flush our caches
     if (args->x.cache_flush_size) {
       size_t nr_elts = args->x.cache_flush_size / sizeof(size_t);
-      size_t *p = args->x.flush_arena;
+      size_t *p = (size_t *)args->x.flush_arena;
       size_t sum = 0;
       while (nr_elts) {
         sum += *p;
@@ -751,10 +753,10 @@ static void *thread_start(void *data) {
 
   if (args->x.run_test_type == RUN_CHASE) {
     if (verbosity > 2) printf("thread_start: C(%d)\n", args->x.thread_num);
-    args->x.chase->fn(data);
+    args->x.chase->fn((per_thread_t *)data);
   } else {
     if (verbosity > 2) printf("thread_start: M(%d)\n", args->x.thread_num);
-    args->x.memload->fn(data);
+    args->x.memload->fn((per_thread_t *)data);
   }
   return NULL;
 }
@@ -953,24 +955,26 @@ int main(int argc, char **argv) {
         break;
       case 'W':
         is_weighted_mbind = 1;
-        char *tok = NULL, *saveptr = NULL;
-        tok = strtok_r(optarg, ",", &saveptr);
-        while (tok != NULL) {
-          uint16_t node_id;
-          uint16_t weight;
-          int count = sscanf(tok, "%hu:%hu", &node_id, &weight);
-          if (count != 2) {
-            fprintf(stderr, "Error: Expecting node_id:weight\n");
-            exit(1);
+	{
+          char *tok = NULL, *saveptr = NULL;
+          tok = strtok_r(optarg, ",", &saveptr);
+          while (tok != NULL) {
+            uint16_t node_id;
+            uint16_t weight;
+            int count = sscanf(tok, "%hu:%hu", &node_id, &weight);
+            if (count != 2) {
+              fprintf(stderr, "Error: Expecting node_id:weight\n");
+              exit(1);
+            }
+            if (node_id >= sizeof(mbind_weights) / sizeof(mbind_weights[0])) {
+              fprintf(stderr, "Error: Maximum node_id is %lu\n",
+                      sizeof(mbind_weights) / sizeof(mbind_weights[0]) - 1);
+              exit(1);
+            }
+            mbind_weights[node_id] = weight;
+            tok = strtok_r(NULL, ",", &saveptr);
           }
-          if (node_id >= sizeof(mbind_weights) / sizeof(mbind_weights[0])) {
-            fprintf(stderr, "Error: Maximum node_id is %lu\n",
-                    sizeof(mbind_weights) / sizeof(mbind_weights[0]) - 1);
-            exit(1);
-          }
-          mbind_weights[node_id] = weight;
-          tok = strtok_r(NULL, ",", &saveptr);
-        }
+	}
         break;
       case 'X':
         set_thread_affinity = 0;
@@ -1125,7 +1129,7 @@ int main(int argc, char **argv) {
                                  genchase_args.total_memory + offset, -1) +
         offset;
   }
-  per_thread_t *thread_data = alloc_arena_mmap(
+  per_thread_t *thread_data = (per_thread_t *)alloc_arena_mmap(
       default_page_size, false, nr_threads * sizeof(per_thread_t), -1);
   void *flush_arena = NULL;
   if (verbosity > 2) printf("allocate cache flush\n");
@@ -1204,7 +1208,7 @@ int main(int argc, char **argv) {
   if (verbosity > 2) printf("main: start sampling thread progress\n");
   // now start sampling their progress
   nr_samples = nr_samples + 1;  // we drop the first sample
-  double *cur_samples = alloca(nr_threads * sizeof(*cur_samples));
+  double *cur_samples = (double *)alloca(nr_threads * sizeof(*cur_samples));
   uint64_t last_sample_time, cur_sample_time;
   double chase_min = 1. / 0., chase_max = 0.;
   double chase_running_sum = 0., load_running_sum = 0.,
