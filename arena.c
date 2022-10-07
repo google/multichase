@@ -229,22 +229,28 @@ static void check_thp_state(void) {
   free(defrag);
 }
 
-void *alloc_arena_mmap(size_t page_size, bool use_thp, size_t arena_size) {
+void *alloc_arena_mmap(size_t page_size, bool use_thp, size_t arena_size, int fd) {
   void *arena;
   size_t pagemask = page_size - 1;
-  int flags = MAP_PRIVATE | MAP_ANONYMOUS | get_page_size_flags(page_size);
+  int flags;
+
+  if (fd == -1)
+    flags = MAP_PRIVATE | MAP_ANONYMOUS | get_page_size_flags(page_size);
+  else
+    flags = MAP_SHARED;
 
   arena_size = (arena_size + pagemask) & ~pagemask;
-  arena = mmap(0, arena_size, PROT_READ | PROT_WRITE, flags, -1, 0);
+  arena = mmap(0, arena_size, PROT_READ | PROT_WRITE, flags, fd, 0);
   if (arena == MAP_FAILED) {
     perror("mmap");
     exit(1);
   }
 
-  if (use_thp) check_thp_state();
+  if (use_thp && fd == -1)
+    check_thp_state();
 
   /* Explicitly disable THP for small pages. */
-  if (!page_size_is_huge(page_size)) {
+  if (!page_size_is_huge(page_size) && fd == -1) {
     if (madvise(arena, arena_size, use_thp ? MADV_HUGEPAGE : MADV_NOHUGEPAGE)) {
       perror("madvise");
     }

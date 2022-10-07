@@ -14,6 +14,7 @@
 #define _GNU_SOURCE
 #include <alloca.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <inttypes.h>
 #include <pthread.h>
 #include <sched.h>
@@ -496,6 +497,7 @@ int main(int argc, char **argv) {
   size_t default_page_size = get_native_page_size();
   size_t page_size = default_page_size;
   bool use_thp = false;
+  bool use_malloc = false;
   bool use_longer_chase = false;
   size_t nr_threads = DEF_NR_THREADS;
   size_t nr_samples = DEF_NR_SAMPLES;
@@ -506,6 +508,7 @@ int main(int argc, char **argv) {
   const char *chase_optarg = chases[0].name;
   const chase_t *chase = &chases[0];
   struct generate_chase_common_args genchase_args;
+  int fd = -1;
 
   genchase_args.total_memory = DEF_TOTAL_MEMORY;
   genchase_args.stride = DEF_STRIDE;
@@ -514,7 +517,7 @@ int main(int argc, char **argv) {
 
   setvbuf(stdout, NULL, _IOLBF, BUFSIZ);
 
-  while ((c = getopt(argc, argv, "ac:F:p:HLm:n:oO:S:s:T:t:vXyW:")) != -1) {
+  while ((c = getopt(argc, argv, "ac:F:p:HLm:n:oO:S:s:T:t:vXyW:f:M")) != -1) {
     switch (c) {
       case 'a':
         print_average = 1;
@@ -543,6 +546,17 @@ int main(int argc, char **argv) {
         } else if (*p != 0) {
           fprintf(stderr, "that chase does not take an argument:\n-c %s\t%s\n",
                   chase->usage1, chase->usage2);
+           exit(1);
+        }
+        break;
+      case 'f':
+        if (fd != -1) {
+          fprintf(stderr, "only one file can be provided\n");
+          exit(1);
+        }
+        fd = open(optarg, O_RDWR);
+        if (fd == -1) {
+          perror("open");
           exit(1);
         }
         break;
@@ -565,6 +579,9 @@ int main(int argc, char **argv) {
       case 'H':
         use_thp = true;
         break;
+      case 'M':
+         use_malloc = true;
+	 break;
       case 'L':
         use_longer_chase = true;
         break;
@@ -686,11 +703,14 @@ int main(int argc, char **argv) {
             DEF_NR_THREADS);
     fprintf(stderr, "-p page_size   backing page size to use (default %zu)\n",
             default_page_size);
+    fprintf(stderr, "-f file        mmap memory using the provided file\n");
     fprintf(stderr,
             "-H             use transparent hugepages (leave page size at "
             "default)\n");
     fprintf(stderr,
             "-L             use longer chase\n");
+    fprintf(stderr,
+            "-M             use malloc instead of mmap to allocate arena\n");
     fprintf(stderr,
             "-F nnnn[kmg]   amount of memory to use to flush the caches after "
             "constructing\n"
@@ -734,15 +754,6 @@ int main(int argc, char **argv) {
         genchase_args.total_memory % genchase_args.tlb_locality;
   }
 
-  if (sizeof(perm_t) < sizeof(size_t) &&
-      ((uint64_t)genchase_args.total_memory / genchase_args.stride) !=
-          (genchase_args.total_memory / genchase_args.stride)) {
-    fprintf(stderr,
-            "too many elements required -- maximum supported is %" PRIu64 "\n",
-            (UINT64_C(1) << 8 * sizeof(perm_t)));
-    exit(1);
-  }
-
   genchase_args.nr_mixer_indices =
       genchase_args.stride / chase->base_object_size;
   if (genchase_args.nr_mixer_indices < nr_threads * chase->parallelism) {
@@ -763,22 +774,33 @@ int main(int argc, char **argv) {
     printf("stride = %zu\n", genchase_args.stride);
     printf("tlb_locality = %zu\n", genchase_args.tlb_locality);
     printf("chase = %s\n", chase_optarg);
+    if (use_malloc) printf("malloc allocation\n");
   }
 
   rng_init(1);
 
-  generate_chase_mixer(&genchase_args);
+  generate_chase_mixer(&genchase_args, nr_threads * chase->parallelism);
 
   // generate the chases by launching multiple threads
-  genchase_args.arena =
-      (char *)alloc_arena_mmap(page_size, use_thp,
-                               genchase_args.total_memory + offset) +
-      offset;
+  if (use_malloc) {
+    genchase_args.arena = (char *)malloc(genchase_args.total_memory + offset) +
+        offset;
+    if (!genchase_args.arena) {
+      perror("malloc");
+      exit(1);
+    }
+  } else {
+    genchase_args.arena =
+        (char *)alloc_arena_mmap(page_size, use_thp,
+                                 genchase_args.total_memory + offset, fd) +
+        offset;
+  }
   per_thread_t *thread_data = alloc_arena_mmap(
-      default_page_size, false, nr_threads * sizeof(per_thread_t));
+      default_page_size, false, nr_threads * sizeof(per_thread_t), -1);
   void *flush_arena = NULL;
   if (cache_flush_size) {
-    flush_arena = alloc_arena_mmap(default_page_size, false, cache_flush_size);
+    flush_arena = alloc_arena_mmap(default_page_size, false, cache_flush_size,
+                                   -1);
     memset(flush_arena, 1, cache_flush_size);  // ensure pages are mapped
   }
 
@@ -861,6 +883,4 @@ int main(int argc, char **argv) {
   printf("%6.*f\n", res < 100. ? 3 : 1, res);
 
   exit(0);
-
-  return 0;
 }

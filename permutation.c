@@ -14,6 +14,7 @@
 #include "permutation.h"
 
 #include <assert.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -89,23 +90,26 @@ int is_a_permutation(const perm_t *perm, size_t nr_elts) {
   return 1;
 }
 
-// power-of-2 number of mixer permutations
-#define NR_MIXERS (16384)
-
-void generate_chase_mixer(struct generate_chase_common_args *args) {
+void generate_chase_mixer(struct generate_chase_common_args *args,
+                          size_t nr_mixers) {
   size_t nr_mixer_indices = args->nr_mixer_indices;
   void (*gen_permutation)(perm_t *, size_t, size_t) = args->gen_permutation;
 
+  /* Set number of mixers rounded up to the power of two */
+  args->nr_mixers = 1 << (CHAR_BIT * sizeof(long) -
+                          __builtin_clzl(nr_mixers - 1));
+  if (verbosity > 1)
+    printf("nr_mixers = %zu\n", args->nr_mixers);
   perm_t *t = malloc(nr_mixer_indices * sizeof(*t));
   if (t == NULL) {
     fprintf(stderr, "Could not allocate %lu bytes, check stride/memory size?\n",
             nr_mixer_indices * sizeof(*t));
     exit(1);
   }
-  perm_t *r = malloc(nr_mixer_indices * NR_MIXERS * sizeof(*r));
+  perm_t *r = malloc(nr_mixer_indices * args->nr_mixers * sizeof(*r));
   if (r == NULL) {
     fprintf(stderr, "Could not allocate %lu bytes, check stride/memory size?\n",
-            nr_mixer_indices * NR_MIXERS * sizeof(*r));
+            nr_mixer_indices * args->nr_mixers * sizeof(*r));
     exit(1);
   }
   size_t i;
@@ -113,10 +117,10 @@ void generate_chase_mixer(struct generate_chase_common_args *args) {
 
   // we arrange r in a transposed manner so that all of the
   // data for a particular mixer_idx is packed together.
-  for (i = 0; i < NR_MIXERS; ++i) {
+  for (i = 0; i < args->nr_mixers; ++i) {
     gen_permutation(t, nr_mixer_indices, 0);
     for (j = 0; j < nr_mixer_indices; ++j) {
-      r[j * NR_MIXERS + i] = t[j];
+      r[j * args->nr_mixers + i] = t[j];
     }
   }
   free(t);
@@ -132,7 +136,7 @@ void *generate_chase(const struct generate_chase_common_args *args,
   size_t stride = args->stride;
   size_t tlb_locality = args->tlb_locality;
   void (*gen_permutation)(perm_t *, size_t, size_t) = args->gen_permutation;
-  const perm_t *mixer = args->mixer + mixer_idx * NR_MIXERS;
+  const perm_t *mixer = args->mixer + mixer_idx * args->nr_mixers;
   size_t nr_mixer_indices = args->nr_mixer_indices;
 
   size_t nr_tlb_groups = total_memory / tlb_locality;
@@ -166,14 +170,13 @@ void *generate_chase(const struct generate_chase_common_args *args,
 
   dassert(is_a_permutation(perm_inverse, nr_elts));
 
-#define MIXED(x) ((x)*stride + mixer[(x) & (NR_MIXERS - 1)] * mixer_scale)
+#define MIXED(x) ((x)*stride + mixer[(x) & (args->nr_mixers - 1)] * mixer_scale)
 
   if (verbosity > 1)
     printf("threading the chase (mixer_idx = %zu)\n", mixer_idx);
   for (i = 0; i < nr_elts; ++i) {
     size_t next;
     dassert(perm[perm_inverse[i]] == i);
-    assert(*(void **)(arena + MIXED(i)) == NULL);
     next = perm_inverse[i] + 1;
     next = (next == nr_elts) ? 0 : next;
     *(void **)(arena + MIXED(i)) = (void *)(arena + MIXED(perm[next]));

@@ -730,8 +730,8 @@ static void *thread_start(void *data) {
     // generate buffers
     args->x.load_arena = (char *)alloc_arena_mmap(
                              page_size, use_thp,
-                             args->x.load_total_memory + args->x.load_offset) +
-                         args->x.load_offset;
+                             args->x.load_total_memory + args->x.load_offset,
+                             -1) + args->x.load_offset;
     memset(args->x.load_arena, 1,
            args->x.load_total_memory);  // ensure pages are mapped
   }
@@ -1086,15 +1086,6 @@ int main(int argc, char **argv) {
         genchase_args.total_memory % genchase_args.tlb_locality;
   }
 
-  if (sizeof(perm_t) < sizeof(size_t) &&
-      ((uint64_t)genchase_args.total_memory / genchase_args.stride) !=
-          (genchase_args.total_memory / genchase_args.stride)) {
-    fprintf(stderr,
-            "too many elements required -- maximum supported is %" PRIu64 "\n",
-            (UINT64_C(1) << 8 * sizeof(perm_t)));
-    exit(1);
-  }
-
   genchase_args.nr_mixer_indices =
       genchase_args.stride / chase->base_object_size;
   if ((run_test_type == RUN_CHASE) &&
@@ -1125,21 +1116,22 @@ int main(int argc, char **argv) {
   rng_init(1);
 
   if (run_test_type != RUN_BANDWIDTH) {
-    generate_chase_mixer(&genchase_args);
+    generate_chase_mixer(&genchase_args, nr_threads * chase->parallelism);
 
     // generate the chases by launching multiple threads
     if (verbosity > 2) printf("allocate genchase_args.arena\n");
     genchase_args.arena =
         (char *)alloc_arena_mmap(page_size, use_thp,
-                                 genchase_args.total_memory + offset) +
+                                 genchase_args.total_memory + offset, -1) +
         offset;
   }
   per_thread_t *thread_data = alloc_arena_mmap(
-      default_page_size, false, nr_threads * sizeof(per_thread_t));
+      default_page_size, false, nr_threads * sizeof(per_thread_t), -1);
   void *flush_arena = NULL;
   if (verbosity > 2) printf("allocate cache flush\n");
   if (cache_flush_size) {
-    flush_arena = alloc_arena_mmap(default_page_size, false, cache_flush_size);
+    flush_arena = alloc_arena_mmap(default_page_size, false, cache_flush_size,
+                                   -1);
     memset(flush_arena, 1, cache_flush_size);  // ensure pages are mapped
   }
 
