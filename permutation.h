@@ -68,6 +68,11 @@ void generate_chase_mixer(struct generate_chase_common_args *args,
 void *generate_chase(const struct generate_chase_common_args *args,
                      size_t mixer_idx);
 
+// create a longer chase for the given mixer_idx and total_par and
+// return its first pointer
+void *generate_chase_long(const struct generate_chase_common_args *args,
+                          size_t mixer_idx, size_t total_par);
+
 //============================================================================
 // Modern multicore CPUs have increasingly large caches, so the LCRNG code
 // that was previously used is not sufficiently random anymore.

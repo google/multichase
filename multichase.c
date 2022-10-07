@@ -84,6 +84,7 @@ typedef union {
     const chase_t *chase;
     void *flush_arena;
     size_t cache_flush_size;
+    bool use_longer_chase;
   } x;
 } per_thread_t;
 
@@ -420,8 +421,14 @@ static void *thread_start(void *data) {
   // thread and for every parallel chase within a thread
   unsigned parallelism = args->x.chase->parallelism;
   for (unsigned par = 0; par < parallelism; ++par) {
-    args->x.cycle[par] = generate_chase(args->x.genchase_args,
+    if (args->x.use_longer_chase) {
+      args->x.cycle[par] = generate_chase_long(args->x.genchase_args,
+                                        parallelism * args->x.thread_num + par,
+                                        parallelism * args->x.nr_threads);
+    } else {
+      args->x.cycle[par] = generate_chase(args->x.genchase_args,
                                         parallelism * args->x.thread_num + par);
+    }
   }
 
   // handle critword2 chases
@@ -491,6 +498,7 @@ int main(int argc, char **argv) {
   size_t page_size = default_page_size;
   bool use_thp = false;
   bool use_malloc = false;
+  bool use_longer_chase = false;
   size_t nr_threads = DEF_NR_THREADS;
   size_t nr_samples = DEF_NR_SAMPLES;
   size_t cache_flush_size = DEF_CACHE_FLUSH;
@@ -509,7 +517,7 @@ int main(int argc, char **argv) {
 
   setvbuf(stdout, NULL, _IOLBF, BUFSIZ);
 
-  while ((c = getopt(argc, argv, "ac:F:p:Hm:n:oO:S:s:T:t:vXyW:f:M")) != -1) {
+  while ((c = getopt(argc, argv, "ac:F:p:HLm:n:oO:S:s:T:t:vXyW:f:M")) != -1) {
     switch (c) {
       case 'a':
         print_average = 1;
@@ -574,6 +582,9 @@ int main(int argc, char **argv) {
       case 'M':
          use_malloc = true;
 	 break;
+      case 'L':
+        use_longer_chase = true;
+        break;
       case 'm':
         if (parse_mem_arg(optarg, &genchase_args.total_memory) ||
             genchase_args.total_memory == 0) {
@@ -697,6 +708,8 @@ int main(int argc, char **argv) {
             "-H             use transparent hugepages (leave page size at "
             "default)\n");
     fprintf(stderr,
+            "-L             use longer chase\n");
+    fprintf(stderr,
             "-M             use malloc instead of mmap to allocate arena\n");
     fprintf(stderr,
             "-F nnnn[kmg]   amount of memory to use to flush the caches after "
@@ -752,6 +765,8 @@ int main(int argc, char **argv) {
   }
 
   if (verbosity > 0) {
+    printf("nr_mixer_indices = %zu\n", genchase_args.nr_mixer_indices);
+    printf("base_object_size = %zu\n", chase->base_object_size);
     printf("nr_threads = %zu\n", nr_threads);
     print_page_size(page_size, use_thp);
     printf("total_memory = %zu (%.1f MiB)\n", genchase_args.total_memory,
@@ -799,6 +814,7 @@ int main(int argc, char **argv) {
     thread_data[i].x.chase = chase;
     thread_data[i].x.flush_arena = flush_arena;
     thread_data[i].x.cache_flush_size = cache_flush_size;
+    thread_data[i].x.use_longer_chase = use_longer_chase;
     if (pthread_create(&thread, NULL, thread_start, &thread_data[i])) {
       perror("pthread_create");
       exit(1);
