@@ -145,7 +145,6 @@ void *generate_chase(const struct generate_chase_common_args *args,
   perm_t *tlb_perm;
   perm_t *perm;
   size_t i;
-  perm_t *perm_inverse;
   size_t mixer_scale = stride / nr_mixer_indices;
 
   if (verbosity > 1)
@@ -162,28 +161,16 @@ void *generate_chase(const struct generate_chase_common_args *args,
 
   dassert(is_a_permutation(perm, nr_elts));
 
-  if (verbosity > 1) printf("generating inverse permtuation\n");
-  perm_inverse = malloc(nr_elts * sizeof(*perm));
-  for (i = 0; i < nr_elts; ++i) {
-    perm_inverse[perm[i]] = i;
-  }
-
-  dassert(is_a_permutation(perm_inverse, nr_elts));
-
 #define MIXED(x) ((x)*stride + mixer[(x) & (args->nr_mixers - 1)] * mixer_scale)
 
   if (verbosity > 1)
     printf("threading the chase (mixer_idx = %zu)\n", mixer_idx);
   for (i = 0; i < nr_elts; ++i) {
-    size_t next;
-    dassert(perm[perm_inverse[i]] == i);
-    next = perm_inverse[i] + 1;
-    next = (next == nr_elts) ? 0 : next;
-    *(void **)(arena + MIXED(i)) = (void *)(arena + MIXED(perm[next]));
+    size_t next = (i+1 == nr_elts) ? 0 : i+1;
+    *(void **)(arena + MIXED(perm[i])) = (void *)(arena + MIXED(perm[next]));
   }
 
   free(perm);
-  free(perm_inverse);
 
   return arena + MIXED(0);
 }
@@ -210,7 +197,6 @@ void *generate_chase_long(const struct generate_chase_common_args *args,
   size_t i;
   size_t j;
   size_t base;
-  perm_t *perm_inverse;
   size_t mixer_scale = stride / nr_mixer_indices;
 
   if (verbosity > 1)
@@ -244,60 +230,24 @@ void *generate_chase_long(const struct generate_chase_common_args *args,
     free(tlb_perm);
 
     dassert(is_a_permutation(perm, nr_elts));
-    if (verbosity > 1)
-      printf("generating inverse permutation\n");
   }
 
   dassert(is_a_permutation(perm, nr_iteration * nr_elts));
 
-  perm_inverse = malloc(nr_iteration * nr_elts * sizeof(*perm_inverse));
-  if (perm_inverse == NULL) {
-    fprintf(stderr, "Could not allocate %lu bytes\n",
-            nr_iteration * nr_elts * sizeof(*perm_inverse));
-    exit(1);
-  }
+#define MIXED_2(x,i) ((x)*stride + mixer[i*args->nr_mixers + ((x) & (args->nr_mixers-1))] * mixer_scale)
 
-  for (i = 0; i < nr_iteration * nr_elts; ++i) {
-    perm_inverse[perm[i]] = i;
-  }
-
-  dassert(is_a_permutation(perm_inverse, nr_iteration, nr_elts));
-
-// Get the [(x mod NR_MIXER)th element in the jth row of mixer]th element
-// in the xth stride of the array.
-#define MIXED_2(x,j,n) ((x)*stride + (mixer + j*n)[(x) & (n-1)] * mixer_scale)
-
-  if (verbosity > 1)
-    printf("threading the chase (mixer_idx = %zu)\n", mixer_idx);
-
-  // Generate the final permutation, which connects nr_iteration * nr_elts
-  // number of permutations together into one.
-  for (i = 0; i < nr_elts * nr_iteration; ++i) {
-    size_t next;
-    dassert(perm[perm_inverse[i]] == i);
-    assert(*(void **)(arena + MIXED_2(i%nr_elts,i/nr_elts, args->nr_mixers)) == NULL);
-    next = perm_inverse[i] + 1;
-    // If next is the position representing the start of a new iteration of
-    // permutation, set next to be the position representing the start of
-    // current iteration, because we want to finish current permutation before
-    // proceeding to the next.
-    next = (next%nr_elts == 0 && next/nr_elts > i/nr_elts) ? i/nr_elts*nr_elts : next;
-
-    if (perm[next]%nr_elts == 0) {
-      // If current iteration of permutation is finished,
-      // new position is the start of next iteration.
-      size_t new = (i/nr_elts + 1) * nr_elts;
-      new = (new == nr_iteration * nr_elts) ? 0 : new;
-      *(void **)(arena + MIXED_2(i%nr_elts,i/nr_elts, args->nr_mixers)) =
-        (void *)(arena + MIXED_2(new%nr_elts,new/nr_elts, args->nr_mixers));
-    } else {
-      *(void **)(arena + MIXED_2(i%nr_elts,i/nr_elts, args->nr_mixers)) =
-        (void *)(arena + MIXED_2(perm[next]%nr_elts,perm[next]/nr_elts, args->nr_mixers));
+  size_t cur = 0;
+  for (i = 0; i < nr_iteration; ++i) {
+    for (j = 0; j < nr_elts; ++j) {
+      size_t next = cur+1 == nr_iteration * nr_elts? 0: cur+1;
+      size_t i_next = j+1==nr_elts? (next==0? 0: i+1): i;
+      *(void **)(arena + MIXED_2(perm[cur]%nr_elts,i)) = 
+        (void *)(arena + MIXED_2(perm[next]%nr_elts,i_next));
+      cur++;
     }
   }
 
   free(perm);
-  free(perm_inverse);
 
-  return arena + MIXED_2(0,0, args->nr_mixers);
+  return arena + MIXED_2(0,0);
 }
