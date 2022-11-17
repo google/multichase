@@ -23,7 +23,7 @@
 #include <sys/syscall.h>
 #include <unistd.h>
 
-#include "permutation.h"
+#include "random.h"
 
 extern int verbosity;
 extern int is_weighted_mbind;

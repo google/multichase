@@ -29,6 +29,7 @@
 #include "cpu_util.h"
 #include "expand.h"
 #include "permutation.h"
+#include "random.h"
 #include "timer.h"
 #include "util.h"
 

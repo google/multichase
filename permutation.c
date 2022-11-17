@@ -20,6 +20,8 @@
 #include <stdbool.h>
 #include <string.h>
 
+#include "random.h"
+
 // some asserts are more expensive than we want in general use, but there are a
 // few i want active even in general use.
 #if 1
