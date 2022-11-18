@@ -73,47 +73,4 @@ void *generate_chase(const struct generate_chase_common_args *args,
 void *generate_chase_long(const struct generate_chase_common_args *args,
                           size_t mixer_idx, size_t total_par);
 
-//============================================================================
-// Modern multicore CPUs have increasingly large caches, so the LCRNG code
-// that was previously used is not sufficiently random anymore.
-// Now using glibc's reentrant random number generator "random_r"
-// still reproducible on the same platform, although not across systems/libs.
-
-// RNG_BUF_SIZE sets the size of rng_buf below, which is used by initstate_r
-// to decide how sophisticated a random number generator it should use: the
-// larger the state array, the better the random numbers will be.
-// 32 bytes was deemed to generate sufficient entropy.
-#define RNG_BUF_SIZE 32
-extern __thread char *rng_buf;
-extern __thread struct random_data *rand_state;
-
-static inline void rng_init(unsigned thread_num) {
-  rng_buf = (char *)calloc(1, RNG_BUF_SIZE);
-  rand_state = (struct random_data *)calloc(1, sizeof(struct random_data));
-  assert(rand_state);
-  if (initstate_r(thread_num, rng_buf, RNG_BUF_SIZE, rand_state) != 0) {
-    perror("initstate_r");
-    exit(1);
-  }
-}
-
-static inline perm_t rng_int(perm_t limit) {
-  int r1, r2, r3, r4;
-  uint64_t r;
-
-  if (random_r(rand_state, &r1) || random_r(rand_state, &r2)
-    || random_r(rand_state, &r3) || random_r(rand_state, &r4)) {
-    perror("random_r");
-    exit(1);
-  }
-  // Assume that RAND_MAX is at least 16-bit long
-  _Static_assert (RAND_MAX >= (1ul << 16), "RAND_MAX is too small");
-  r = (((uint64_t)r1 <<  0) & 0x000000000000FFFFull) |
-      (((uint64_t)r2 << 16) & 0x00000000FFFF0000ull) |
-      (((uint64_t)r3 << 32) & 0x0000FFFF00000000ull) |
-      (((uint64_t)r4 << 48) & 0xFFFF000000000000ull);
-
-  return r % (limit + 1);
-}
-
 #endif

@@ -11,7 +11,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-CFLAGS=-std=gnu99 -g -O3 -fomit-frame-pointer -fno-unroll-loops -Wall -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wmissing-declarations -Wnested-externs -Wpointer-arith -W -Wno-unused-parameter -Werror -pthread -Wno-tautological-compare
+CPPFLAGS=-g -O3 -fomit-frame-pointer -fno-unroll-loops -Wall -Wshadow -Wmissing-declarations -Wpointer-arith -W -Wno-unused-parameter -Werror -pthread -Wno-tautological-compare
+
+CFLAGS=-std=gnu99 -Wstrict-prototypes -Wmissing-prototypes -Wnested-externs
+CXXFLAGS=-std=gnu++11
+
 LDFLAGS=-g -O3 -static -pthread
 LDLIBS=-lrt -lm
 
@@ -20,9 +24,9 @@ ARCH ?= $(shell uname -m)
 ifeq ($(ARCH),aarch64)
  CAP ?= $(shell cat /proc/cpuinfo | grep -E 'atomics|sve' | head -1)
  ifneq (,$(findstring sve,$(CAP)))
-  CFLAGS+=-march=armv8.2-a+sve
+  CPPFLAGS+=-march=armv8.2-a+sve
  else ifneq (,$(findstring atomics,$(CAP)))
-  CFLAGS+=-march=armv8.1-a+lse
+  CPPFLAGS+=-march=armv8.1-a+lse
  endif
 endif
 
@@ -36,9 +40,9 @@ clean:
 .c.s:
 	$(CC) $(CFLAGS) -S -c $<
 
-multichase: multichase.o permutation.o arena.o util.o
+multichase: multichase.o permutation.o random.o arena.o util.o
 
-multiload: multiload.o permutation.o arena.o util.o
+multiload: multiload.o permutation.o random.o arena.o util.o
 
 fairness: LDLIBS += -lm
 
@@ -51,10 +55,11 @@ depend:
 
 # DO NOT DELETE
 
-arena.o: arena.h
-multichase.o: cpu_util.h timer.h expand.h permutation.h arena.h util.h
-multiload.o: cpu_util.h timer.h expand.h permutation.h arena.h util.h
-permutation.o: permutation.h
+arena.o: arena.h random.h
+multichase.o: cpu_util.h timer.h expand.h permutation.h random.h arena.h util.h
+multiload.o: cpu_util.h timer.h expand.h permutation.h random.h arena.h util.h
+permutation.o: permutation.h random.h
+random.o: random.h
 util.o: util.h
 fairness.o: cpu_util.h expand.h timer.h
 pingpong.o: cpu_util.h timer.h
