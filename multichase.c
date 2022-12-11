@@ -26,6 +26,7 @@
 #include <unistd.h>
 
 #include "arena.h"
+#include "asm.h"
 #include "cpu_util.h"
 #include "expand.h"
 #include "permutation.h"
@@ -85,6 +86,7 @@ typedef union {
     void *flush_arena;
     size_t cache_flush_size;
     bool use_longer_chase;
+    int branch_chunk_size;
   } x;
 } per_thread_t;
 
@@ -179,6 +181,19 @@ static void chase_incr(per_thread_t *t) {
 
   // we never actually reach here, but the compiler doesn't know that
   t->x.cycle[0] = p;
+}
+
+static void chase_branch(per_thread_t *t) {
+  void *p = t->x.cycle[0];
+  typedef void* (*fptr)(void);
+  fptr fp = p;
+
+  do {
+    fp = (fptr)(fp)();
+  } while (__sync_add_and_fetch(&t->x.count, t->x.branch_chunk_size));
+
+  // we never actually reach here, but the compiler doesn't know that
+  t->x.dummy = (uintptr_t)p;
 }
 
 #if defined(__x86_64__) || defined(__i386__)
@@ -303,6 +318,15 @@ static const chase_t chases[] = {
         .name = "incr",
         .usage1 = "incr",
         .usage2 = "modify the cache line after each deref",
+        .requires_arg = 0,
+        .parallelism = 1,
+    },
+    {
+        .fn = chase_branch,
+        .base_object_size = 16,
+        .name = "branch",
+        .usage1 = "branch",
+        .usage2 = "convert pointers to branches",
         .requires_arg = 0,
         .parallelism = 1,
     },
@@ -456,6 +480,16 @@ static void *thread_start(void *data) {
     } while (p != q);
   }
 
+  // handle branch chases
+  if (strcmp(args->x.chase->name, "branch") == 0) {
+    void *p = args->x.cycle[0];
+    args->x.branch_chunk_size = convert_pointers_to_branches(p, 200);
+#if defined(__aarch64__)
+    __builtin___clear_cache(args->x.genchase_args->arena,
+                            args->x.genchase_args->arena + args->x.genchase_args->total_memory);
+#endif
+  }
+  
   // now flush our caches
   if (args->x.cache_flush_size) {
     size_t nr_elts = args->x.cache_flush_size / sizeof(size_t);
@@ -471,6 +505,13 @@ static void *thread_start(void *data) {
 
   // wait and/or wake up everyone if we're all ready
   pthread_mutex_lock(&wait_mutex);
+  if (nr_to_startup == 1) {
+    if (strcmp(args->x.chase->name, "branch") == 0) {
+    // Change buffer to executable before letting the chases run.
+    make_buffer_executable(args->x.genchase_args->arena,
+                           args->x.genchase_args->total_memory);
+    }
+  }
   --nr_to_startup;
   if (nr_to_startup) {
     pthread_cond_wait(&wait_cond, &wait_mutex);
