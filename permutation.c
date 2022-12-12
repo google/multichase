@@ -14,7 +14,6 @@
 #include "permutation.h"
 
 #include <assert.h>
-#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -90,14 +89,10 @@ int is_a_permutation(const perm_t *perm, size_t nr_elts) {
   return 1;
 }
 
-void generate_chase_mixer(struct generate_chase_common_args *args,
-                          size_t nr_mixers) {
+void generate_chase_mixer(struct generate_chase_common_args *args) {
   size_t nr_mixer_indices = args->nr_mixer_indices;
   void (*gen_permutation)(perm_t *, size_t, size_t) = args->gen_permutation;
 
-  /* Set number of mixers rounded up to the power of two */
-  args->nr_mixers = 1 << (CHAR_BIT * sizeof(long) -
-                          __builtin_clzl(nr_mixers - 1));
   if (verbosity > 1)
     printf("nr_mixers = %zu\n", args->nr_mixers);
   perm_t *t = malloc(nr_mixer_indices * sizeof(*t));

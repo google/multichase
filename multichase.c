@@ -50,6 +50,7 @@
 #define DEF_TOTAL_MEMORY ((size_t)256 * 1024 * 1024)
 #define DEF_STRIDE ((size_t)256)
 #define DEF_NR_SAMPLES ((size_t)5)
+#define DEF_NR_MIXERS ((size_t)16384)
 #define DEF_TLB_LOCALITY ((size_t)64)
 #define DEF_NR_THREADS ((size_t)1)
 #define DEF_CACHE_FLUSH ((size_t)64 * 1024 * 1024)
@@ -514,10 +515,11 @@ int main(int argc, char **argv) {
   genchase_args.stride = DEF_STRIDE;
   genchase_args.tlb_locality = DEF_TLB_LOCALITY * default_page_size;
   genchase_args.gen_permutation = gen_random_permutation;
+  genchase_args.nr_mixers = DEF_NR_MIXERS;
 
   setvbuf(stdout, NULL, _IOLBF, BUFSIZ);
 
-  while ((c = getopt(argc, argv, "ac:F:p:HLm:n:oO:S:s:T:t:vXyW:f:M")) != -1) {
+  while ((c = getopt(argc, argv, "ac:F:p:HLm:n:oO:R:S:s:T:t:vXyW:f:M")) != -1) {
     switch (c) {
       case 'a':
         print_average = 1;
@@ -612,6 +614,13 @@ int main(int argc, char **argv) {
       case 'o':
         genchase_args.gen_permutation = gen_ordered_permutation;
         break;
+      case 'R':
+        if (parse_mem_arg(optarg, &genchase_args.nr_mixers)) {
+          fprintf(stderr,
+                  "nr_mixers must be a positive integer\n");
+          exit(1);
+        }
+        break;
       case 's':
         if (parse_mem_arg(optarg, &genchase_args.stride)) {
           fprintf(
@@ -699,6 +708,8 @@ int main(int argc, char **argv) {
     fprintf(stderr,
             "               NOTE: TLB locality will be rounded down to a "
             "multiple of stride\n");
+    fprintf(stderr, "-R nr_mixers   value of nr_mixers (default %zu)\n",
+            DEF_NR_MIXERS);
     fprintf(stderr, "-t nr_threads  number of threads (default %zu)\n",
             DEF_NR_THREADS);
     fprintf(stderr, "-p page_size   backing page size to use (default %zu)\n",
@@ -779,7 +790,7 @@ int main(int argc, char **argv) {
 
   rng_init(1);
 
-  generate_chase_mixer(&genchase_args, nr_threads * chase->parallelism);
+  generate_chase_mixer(&genchase_args);
 
   // generate the chases by launching multiple threads
   if (use_malloc) {

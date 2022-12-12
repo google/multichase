@@ -61,8 +61,7 @@ struct generate_chase_common_args {
 };
 
 // create the mixer table
-void generate_chase_mixer(struct generate_chase_common_args *args,
-                          size_t nr_mixers);
+void generate_chase_mixer(struct generate_chase_common_args *args);
 
 // create a chase for the given mixer_idx and return its first pointer
 void *generate_chase(const struct generate_chase_common_args *args,
