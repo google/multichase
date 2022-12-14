@@ -26,7 +26,7 @@
 #include <unistd.h>
 
 #include "arena.h"
-#include "asm.h"
+#include "br_asm.h"
 #include "cpu_util.h"
 #include "expand.h"
 #include "permutation.h"
@@ -481,12 +481,13 @@ static void *thread_start(void *data) {
   }
 
   // handle branch chases
-  if (strcmp(args->x.chase->name, "branch") == 0) {
+  if (!strcmp(args->x.chase->name, "branch")) {
     void *p = args->x.cycle[0];
     args->x.branch_chunk_size = convert_pointers_to_branches(p, 200);
 #if defined(__aarch64__)
-    __builtin___clear_cache(args->x.genchase_args->arena,
-                            args->x.genchase_args->arena + args->x.genchase_args->total_memory);
+    __builtin___clear_cache(
+        args->x.genchase_args->arena,
+        args->x.genchase_args->arena + args->x.genchase_args->total_memory);
 #endif
   }
   
@@ -506,10 +507,10 @@ static void *thread_start(void *data) {
   // wait and/or wake up everyone if we're all ready
   pthread_mutex_lock(&wait_mutex);
   if (nr_to_startup == 1) {
-    if (strcmp(args->x.chase->name, "branch") == 0) {
-    // Change buffer to executable before letting the chases run.
-    make_buffer_executable(args->x.genchase_args->arena,
-                           args->x.genchase_args->total_memory);
+    if (!strcmp(args->x.chase->name, "branch")) {
+      // Change buffer to executable before letting the chases run.
+      make_buffer_executable(args->x.genchase_args->arena,
+                             args->x.genchase_args->total_memory);
     }
   }
   --nr_to_startup;

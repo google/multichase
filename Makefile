@@ -36,7 +36,7 @@ clean:
 .c.s:
 	$(CC) $(CFLAGS) -S -c $<
 
-multichase: multichase.o permutation.o arena.o util.o
+multichase: multichase.o permutation.o arena.o br_asm.o util.o
 
 multiload: multiload.o permutation.o arena.o util.o
 
