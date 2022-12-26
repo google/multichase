@@ -266,3 +266,11 @@ void *alloc_arena_mmap(size_t page_size, bool use_thp, size_t arena_size, int fd
   }
   return arena;
 }
+
+void make_buffer_executable(void *buf, size_t len) {
+  if (mprotect(buf, len, PROT_EXEC)) {
+    perror("mprotect(PROT_EXEC)");
+    exit(1);
+  }
+}
+
