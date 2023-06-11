@@ -55,6 +55,9 @@
 #define DEF_NR_THREADS ((size_t)1)
 #define DEF_CACHE_FLUSH ((size_t)64 * 1024 * 1024)
 #define DEF_OFFSET ((size_t)0)
+#define DELAY_USECS 500000
+#define NSECS_PER_USEC 1000
+#define NSECS_PER_MSEC (1000 * 1000)
 
 int verbosity;
 int print_timestamp;
@@ -551,6 +554,7 @@ int main(int argc, char **argv) {
   const chase_t *chase = &chases[0];
   struct generate_chase_common_args genchase_args;
   int fd = -1;
+  uint64_t duration_nsecs = -1;
 
   genchase_args.total_memory = DEF_TOTAL_MEMORY;
   genchase_args.stride = DEF_STRIDE;
@@ -559,7 +563,7 @@ int main(int argc, char **argv) {
 
   setvbuf(stdout, NULL, _IOLBF, BUFSIZ);
 
-  while ((c = getopt(argc, argv, "ac:F:p:HLm:n:oO:S:s:T:t:vXyW:f:M")) != -1) {
+  while ((c = getopt(argc, argv, "ac:F:p:HLm:Nn:oO:S:s:T:t:vXyW:f:M")) != -1) {
     switch (c) {
       case 'a':
         print_average = 1;
@@ -635,6 +639,9 @@ int main(int argc, char **argv) {
                   "or g)\n");
           exit(1);
         }
+        break;
+      case 'N':
+        duration_nsecs = 0;
         break;
       case 'n':
         nr_samples = strtoul(optarg, &p, 0);
@@ -727,6 +734,8 @@ int main(int argc, char **argv) {
     fprintf(stderr,
             "               NOTE: memory size will be rounded down to a "
             "multiple of -T option\n");
+    fprintf(stderr,
+            "-N             timed run (stops at nr_samples/2 seconds)\n");
     fprintf(stderr,
             "-n nr_samples  nr of 0.5 second samples to use (default %zu, 0 = "
             "infinite)\n",
@@ -871,22 +880,27 @@ int main(int argc, char **argv) {
   pthread_mutex_unlock(&wait_mutex);
 
   // now start sampling their progress
+ if (!duration_nsecs)
+    duration_nsecs = nr_samples * DELAY_USECS * NSECS_PER_USEC;
   nr_samples = nr_samples + 1;  // we drop the first sample
   uint64_t *cur_samples = alloca(nr_threads * sizeof(*cur_samples));
   uint64_t last_sample_time = now_nsec();
+  uint64_t start_time = last_sample_time;
+  uint64_t total = 0;
   double best = 1. / 0.;
   double running_sum = 0.;
   if (verbosity > 0)
     printf("samples (one column per thread, one row per sample):\n");
   for (size_t sample_no = 0; nr_samples == 1 || sample_no < nr_samples;
        ++sample_no) {
-    usleep(500000);
+    usleep(DELAY_USECS);
 
     uint64_t sum = 0;
     for (i = 0; i < nr_threads; ++i) {
       cur_samples[i] = __sync_lock_test_and_set(&thread_data[i].x.count, 0);
       sum += cur_samples[i];
     }
+    total += sum;
 
     uint64_t cur_sample_time = now_nsec();
     uint64_t time_delta = cur_sample_time - last_sample_time;
@@ -913,6 +927,12 @@ int main(int argc, char **argv) {
     if (verbosity > 0) {
       double z = t * nr_threads;
       printf("  avg=%.*f\n", z < 100. ? 3 : 1, z);
+    }
+
+    if (last_sample_time - start_time > duration_nsecs) {
+      printf("timed out: %lu samples, %lu counts per msec\n",
+             sample_no,  total * NSECS_PER_MSEC / duration_nsecs);
+      break;
     }
   }
   timestamp();
