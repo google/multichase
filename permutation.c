@@ -98,6 +98,8 @@ void generate_chase_mixer(struct generate_chase_common_args *args,
   /* Set number of mixers rounded up to the power of two */
   args->nr_mixers = 1 << (CHAR_BIT * sizeof(long) -
                           __builtin_clzl(nr_mixers - 1));
+  if (args->nr_mixers < 64) args->nr_mixers = 64;
+
   if (verbosity > 1)
     printf("nr_mixers = %zu\n", args->nr_mixers);
   perm_t *t = malloc(nr_mixer_indices * sizeof(*t));
