@@ -21,6 +21,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mman.h>
 #include <sys/time.h>
 #include <time.h>
 #include <unistd.h>
@@ -31,6 +32,10 @@
 #include "permutation.h"
 #include "timer.h"
 #include "util.h"
+
+#if defined(__x86_64__)
+#include <emmintrin.h>
+#endif
 
 // The total memory, stride, and TLB locality have been chosen carefully for
 // the current generation of CPUs:
@@ -54,6 +59,8 @@
 #define DEF_NR_THREADS ((size_t)1)
 #define DEF_CACHE_FLUSH ((size_t)64 * 1024 * 1024)
 #define DEF_OFFSET ((size_t)0)
+#define DEF_DELAY ((size_t)1)
+#define DEF_CACHELINE ((size_t)64)
 
 #define LOAD_DELAY_WARMUP_uS \
   4000000  // Latency & Load thread warmup before data sampling starts
@@ -108,6 +115,7 @@ typedef union {
                                 // amortize TLB fills
     volatile size_t sample_no;  // flag from main thread to tell bandwdith
                                 // thread to start the next sample.
+    size_t delay;               // injection delay for load
   } x;
 } per_thread_t;
 
@@ -542,6 +550,71 @@ static void load_stream_triad(per_thread_t *t) {
 #undef LOOP_ALIGN
 }
 
+static inline void delay_until_iteration(uint64_t iteration) {
+  while (iteration--) {
+    asm volatile("nop");
+  }
+}
+
+//--------------------------------------------------------------------------------------------------------
+// Stream triad pattern with nontermpoal hint and adjustable injection delay
+static void load_stream_triad_nontemporal_injection_delay(per_thread_t *t) {
+#define LOOP_OPS 3
+#define LOOP_ALIGN 16
+  uint64_t load_loop, load_bites;
+  register uint64_t N, i;
+  register uint64_t *a;
+  register uint64_t *b;
+  register uint64_t *c;
+  register uint64_t *tmp;
+  const uint64_t num_elem_twocachelines = DEF_CACHELINE / sizeof(uint64_t) * 2;
+
+  load_loop =
+      t->x.load_total_memory -
+      (LOOP_OPS * LOOP_ALIGN);  // subtract to allow aligning count/addresses
+  load_loop = (load_loop / LOOP_OPS) &
+              ~(LOOP_ALIGN - 1);  // divide by 3 buffers and align byte count on
+                                  // LOOP_ALIGN byte multiple
+  N = load_loop / sizeof(uint64_t);
+  load_bites = N * sizeof(uint64_t) * LOOP_OPS;
+  size_t aa = (((size_t)t->x.load_arena + LOOP_ALIGN) &
+               ~(LOOP_ALIGN));  // align on 16 byte address
+  a = (uint64_t *)aa;
+  b = a + N;
+  c = b + N;
+
+  if (verbosity > 1) {
+    printf(
+        "load_arena=%p, load_total_memory=0x%lX, load_loop=0x%lX, N=0x%lX, "
+        "a=%p, b=%p, c=%p\n",
+        (char *)t->x.load_arena, t->x.load_total_memory, load_loop, N, a, b, c);
+  }
+
+  LOAD_MEMORY_INIT_MIBPS
+  do {
+    tmp = a;
+    a = b;
+    b = c;
+    c = tmp;
+
+    for (i = 0; i < N; i += 2) {
+      if (i % num_elem_twocachelines == 0) delay_until_iteration(t->x.delay);
+#if defined(__aarch64__)
+      asm volatile ("stnp %0, %1, [%2]" :: "r"(b[i]+c[i]), "r"(b[i+1]+c[i+1]), "r" (a+i));
+#elif defined(__x86_64__)
+      _mm_stream_si64(&((long long*)a)[i], b[i]+c[i]);
+      _mm_stream_si64(&((long long*)a)[i+1], b[i+1]+c[i+1]);
+#else
+      a[i] = b[i] + c[i];
+      a[i+1] = b[i+1] + c[i+1];
+#endif
+    }
+    LOAD_MEMORY_SAMPLE_MIBPS
+  } while (1);
+#undef LOOP_OPS
+#undef LOOP_ALIGN
+}
+
 //--------------------------------------------------------------------------------------------------------
 static void load_stream_copy(per_thread_t *t) {
 #define LOOP_OPS 2
@@ -641,6 +714,15 @@ static const chase_t memloads[] = {
         .name = "stream-triad",
         .usage1 = "stream-triad",
         .usage2 = "2:1 rd:wr - lmbench stream triad a[i]=b[i]+(scalar*c[i])",
+        .requires_arg = 0,
+        .parallelism = 0,
+    },
+    {
+        .fn = load_stream_triad_nontemporal_injection_delay,
+        .base_object_size = sizeof(void *),
+        .name = "stream-triad-nontemporal-injection-delay",
+        .usage1 = "stream-triad-nontemporal-injection-delay",
+        .usage2 = "2:1 rd:wr - lmbench stream triad with nontemporal hint",
         .requires_arg = 0,
         .parallelism = 0,
     }};
@@ -773,6 +855,7 @@ int main(int argc, char **argv) {
   size_t nr_threads = DEF_NR_THREADS;
   size_t nr_samples = DEF_NR_SAMPLES;
   size_t cache_flush_size = DEF_CACHE_FLUSH;
+  size_t delay = DEF_DELAY;
   size_t offset = DEF_OFFSET;
   int print_average = 0;
   const char *extra_args = NULL;
@@ -793,7 +876,7 @@ int main(int argc, char **argv) {
 
   setvbuf(stdout, NULL, _IOLBF, BUFSIZ);
 
-  while ((c = getopt(argc, argv, "ac:l:F:p:Hm:n:oO:S:s:T:t:vXyW:")) != -1) {
+  while ((c = getopt(argc, argv, "ac:d:l:F:p:Hm:n:oO:S:s:T:t:vXyW:")) != -1) {
     switch (c) {
       case 'a':
         print_average = 1;
@@ -839,6 +922,13 @@ int main(int argc, char **argv) {
           fprintf(stderr,
                   "Error: that chase does not take an argument:\n-c %s\t%s\n",
                   chase->usage1, chase->usage2);
+          exit(1);
+        }
+        break;
+      case 'd':
+        delay = strtoul(optarg, &p, 0);
+        if (*p) {
+          fprintf(stderr, "Error: delay must be a non-negative integer\n");
           exit(1);
         }
         break;
@@ -1012,6 +1102,10 @@ int main(int argc, char **argv) {
     }
     fprintf(stderr, "         default: %s\n", memloads[0].name);
     fprintf(stderr,
+            "-d delay  delay used between loads; only effecitve if used with "
+            "load pattern with suffix injection_delay. (default %zu)\n",
+            DEF_DELAY);
+    fprintf(stderr,
             "-F nnnn[kmg]   amount of memory to use to flush the caches after "
             "constructing\n"
             "         the chase/memload and before starting the benchmark (use "
@@ -1151,6 +1245,7 @@ int main(int argc, char **argv) {
     thread_data[i].x.load_total_memory =
         genchase_args.total_memory;         // size of the arena
     thread_data[i].x.load_offset = offset;  // memory buffer offset
+    thread_data[i].x.delay = delay;
 
     if (run_test_type == RUN_CHASE_LOADED) {
       if (i == 0) {
