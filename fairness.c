@@ -103,12 +103,16 @@ int main(int argc, char **argv) {
   int sweep_max = 1;
   size_t time_slice = 500000;
   char sep = ' ';
+  size_t sample_size = 6;
 
   delay_mask = 0;
-  while ((c = getopt(argc, argv, "d:s:t:S:")) != -1) {
+  while ((c = getopt(argc, argv, "d:n:s:t:S:")) != -1) {
     switch (c) {
       case 'd':
         delay_mask = strtoul(optarg, 0, 0);
+        break;
+      case 'n':
+        sample_size =  strtof(optarg, 0);
         break;
       case 's':
         sweep_max = strtoul(optarg, 0, 0);
@@ -130,14 +134,17 @@ int main(int argc, char **argv) {
         stderr,
         "usage: %s \n"
         " [-d delay_mask]\n"
+        " [-n sample_nr]\n"
         " [-s sweep_max]\n"
         " [-t time]\n"
-        "by default runs one thread on each cpu, use taskset(1) to\n"
+        "By default runs one thread on each cpu, use taskset(1) to "
         "restrict operation to fewer cpus/threads.\n"
-        "The optional delay_mask specifies a mask of cpus on which to delay\n"
+        "The optional delay_mask specifies a mask of cpus on which to delay "
         "the startup.\n"
-        "The optional sweep_max causes testing across multiple different cache "
-        "lines.\n"
+        "The optional sample_nr determines the number of samples taken for "
+        "each test point.\n"
+        "The optional sweep_max causes testing across multiple different "
+        "cache lines.\n"
         "The optional time determines how often to poll results (float in "
         "seconds).\n",
         argv[0]);
@@ -207,7 +214,9 @@ int main(int argc, char **argv) {
       global_counter.sweep_id = sweep;
       uint64_t last_stamp = now_nsec();
       size_t sample_nr;
-      for (sample_nr = 0; sample_nr < 6; ++sample_nr) {
+      // The first sample is thrown out, so increment sample_size by 1 to get
+      // the requested number of samples.
+      for (sample_nr = 0; sample_nr < sample_size + 1; ++sample_nr) {
         double min = 1.0 / 0., max = 0.;
         usleep(time_slice);
         for (u = 0; u < nr_threads; ++u) {
