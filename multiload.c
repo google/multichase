@@ -105,7 +105,7 @@ typedef union {
     const chase_t *chase;
     void *flush_arena;
     size_t cache_flush_size;
-
+    bool use_longer_chase;
     test_type_t run_test_type;  // test type: chase or memory bandwidth
     const chase_t *memload;     // memory bandwidth function
     char *load_arena;           // load memory buffer used by this thread
@@ -768,8 +768,14 @@ static void *thread_start(void *data) {
     // thread and for every parallel chase within a thread
     unsigned parallelism = args->x.chase->parallelism;
     for (unsigned par = 0; par < parallelism; ++par) {
-      args->x.cycle[par] = generate_chase(
-          args->x.genchase_args, parallelism * args->x.thread_num + par);
+      if (args->x.use_longer_chase) {
+        args->x.cycle[par] = generate_chase_long(
+            args->x.genchase_args, parallelism * args->x.thread_num + par,
+            parallelism);
+      } else {
+        args->x.cycle[par] = generate_chase(
+            args->x.genchase_args, parallelism * args->x.thread_num + par);
+      }
     }
     // handle critword2 chases
     if (strcmp(args->x.chase->name, "critword2") == 0) {
@@ -857,6 +863,7 @@ int main(int argc, char **argv) {
   size_t cache_flush_size = DEF_CACHE_FLUSH;
   size_t delay = DEF_DELAY;
   size_t offset = DEF_OFFSET;
+  bool use_longer_chase = false;
   int print_average = 0;
   const char *extra_args = NULL;
   const char *chase_optarg = chases[0].name;
@@ -876,7 +883,7 @@ int main(int argc, char **argv) {
 
   setvbuf(stdout, NULL, _IOLBF, BUFSIZ);
 
-  while ((c = getopt(argc, argv, "ac:d:l:F:p:Hm:n:oO:S:s:T:t:vXyW:")) != -1) {
+  while ((c = getopt(argc, argv, "ac:d:l:F:p:HLm:n:oO:S:s:T:t:vXyW:")) != -1) {
     switch (c) {
       case 'a':
         print_average = 1;
@@ -987,6 +994,9 @@ int main(int argc, char **argv) {
                   memload->usage1, memload->usage2);
           exit(1);
         }
+        break;
+      case 'L':
+        use_longer_chase = true;
         break;
       case 'm':
         if (parse_mem_arg(optarg, &genchase_args.total_memory) ||
@@ -1123,6 +1133,8 @@ int main(int argc, char **argv) {
             "         NOTE: memory size will be rounded down to a multiple of "
             "-T option\n");
     fprintf(stderr,
+            "-L             use longer chase\n");
+    fprintf(stderr,
             "-n nr_samples  nr of 0.5 second samples to use (default %zu, 0 = "
             "infinite)\n",
             DEF_NR_SAMPLES);
@@ -1246,6 +1258,7 @@ int main(int argc, char **argv) {
         genchase_args.total_memory;         // size of the arena
     thread_data[i].x.load_offset = offset;  // memory buffer offset
     thread_data[i].x.delay = delay;
+    thread_data[i].x.use_longer_chase = use_longer_chase;
 
     if (run_test_type == RUN_CHASE_LOADED) {
       if (i == 0) {
