@@ -96,8 +96,11 @@ void generate_chase_mixer(struct generate_chase_common_args *args,
   void (*gen_permutation)(perm_t *, size_t, size_t) = args->gen_permutation;
 
   /* Set number of mixers rounded up to the power of two */
-  args->nr_mixers = 1 << (CHAR_BIT * sizeof(long) -
-                          __builtin_clzl(nr_mixers - 1));
+  if (nr_mixer > 1) {
+    args->nr_mixers = 1 << (CHAR_BIT * sizeof(long) -
+                            __builtin_clzl(nr_mixers - 1));
+  }
+  
   if (args->nr_mixers < 64) {
     args->nr_mixers = 64;
   }
