@@ -99,6 +99,8 @@ void generate_chase_mixer(struct generate_chase_common_args *args,
   if (nr_mixers > 1) {
     args->nr_mixers = 1 << (CHAR_BIT * sizeof(long) -
                             __builtin_clzl(nr_mixers - 1));
+  } else {
+    args->nr_mixers = 1;
   }
 
   if (args->nr_mixers < 64) {
