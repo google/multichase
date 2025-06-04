@@ -1,11 +1,17 @@
 Multichase - a pointer chaser benchmark
 Multiload - a superset of multichase which runs latency, memory bandwidth, and loaded-latency
 
-1/ BUILD
+1/ BUILD (make)
 
    - just type:
 
      $ make
+
+   BUILD (cmake)
+
+   - cmake -S . build
+   - cd build
+   - make
 
 2/ INSTALL
 
