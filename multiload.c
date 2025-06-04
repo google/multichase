@@ -506,7 +506,7 @@ static void load_memsetz_libc(per_thread_t *t) {
 //--------------------------------------------------------------------------------------------------------
 static void load_stream_triad(per_thread_t *t) {
 #define LOOP_OPS 3
-#define LOOP_ALIGN 16
+#define LOOP_ALIGN 64
   uint64_t load_loop, load_bites;
   register uint64_t N, i;
   register double *a;
@@ -523,7 +523,7 @@ static void load_stream_triad(per_thread_t *t) {
   N = load_loop / sizeof(double);
   load_bites = N * sizeof(double) * LOOP_OPS;
   size_t aa = (((size_t)t->x.load_arena + LOOP_ALIGN) &
-               ~(LOOP_ALIGN));  // align on 16 byte address
+               ~(LOOP_ALIGN - 1));  // align on 64 byte address
   a = (double *)aa;
   b = a + N;
   c = b + N;
@@ -560,7 +560,7 @@ static inline void delay_until_iteration(uint64_t iteration) {
 // Stream triad pattern with nontermpoal hint and adjustable injection delay
 static void load_stream_triad_nontemporal_injection_delay(per_thread_t *t) {
 #define LOOP_OPS 3
-#define LOOP_ALIGN 16
+#define LOOP_ALIGN 64
   uint64_t load_loop, load_bites;
   register uint64_t N, i;
   register uint64_t *a;
@@ -578,7 +578,7 @@ static void load_stream_triad_nontemporal_injection_delay(per_thread_t *t) {
   N = load_loop / sizeof(uint64_t);
   load_bites = N * sizeof(uint64_t) * LOOP_OPS;
   size_t aa = (((size_t)t->x.load_arena + LOOP_ALIGN) &
-               ~(LOOP_ALIGN));  // align on 16 byte address
+               ~(LOOP_ALIGN - 1));  // align on 64 byte address
   a = (uint64_t *)aa;
   b = a + N;
   c = b + N;
