@@ -19,6 +19,7 @@
 #include <string.h>
 #include <sys/ipc.h>
 #include <sys/mman.h>
+#include <sys/prctl.h>
 #include <sys/shm.h>
 #include <sys/syscall.h>
 #include <unistd.h>
@@ -232,7 +233,14 @@ static void check_thp_state(void) {
 void *alloc_arena_mmap(size_t page_size, bool use_thp, size_t arena_size, int fd) {
   void *arena;
   size_t pagemask = page_size - 1;
+  int prot = PROT_READ | PROT_WRITE;
   int flags;
+
+#ifdef __aarch64__
+  int tac = prctl(PR_GET_TAGGED_ADDR_CTRL, 0, 0, 0, 0);
+  if (tac != -1 && (tac & PR_MTE_TCF_MASK))
+    prot |= PROT_MTE;
+#endif
 
   if (fd == -1)
     flags = MAP_PRIVATE | MAP_ANONYMOUS | get_page_size_flags(page_size);
@@ -240,7 +248,7 @@ void *alloc_arena_mmap(size_t page_size, bool use_thp, size_t arena_size, int fd
     flags = MAP_SHARED;
 
   arena_size = (arena_size + pagemask) & ~pagemask;
-  arena = mmap(0, arena_size, PROT_READ | PROT_WRITE, flags, fd, 0);
+  arena = mmap(0, arena_size, prot, flags, fd, 0);
   if (arena == MAP_FAILED) {
     perror("mmap");
     exit(1);
