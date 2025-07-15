@@ -83,6 +83,65 @@ int convert_pointers_to_branches(void *head, int chunk_size) {
   return base_chunk_size;
 }
 
+#elif defined(__riscv) && __riscv_xlen == 64
+static char *riscv64_emit_lui_a0_imm64(char *p, uint64_t imm64) {
+  *p++ = 0x37; // opcode for LUI (Load Upper Immediate)
+  *p++ = 0x05; // rd = a0
+  *p++ = (imm64 >> 32) & 0xff;
+  *p++ = (imm64 >> 40) & 0xff;
+  *p++ = (imm64 >> 48) & 0xff;
+  *p++ = (imm64 >> 56) & 0xff;
+  return p;
+}
+
+static char *riscv64_emit_jalr_a0(char *p) {
+  *p++ = 0x67; // opcode for JALR (Jump and Link Register)
+  *p++ = 0x80; // rd = x1 (return address), rs1 = a0
+  *p++ = 0x00;
+  *p++ = 0x00;
+  return p;
+}
+
+static char *riscv64_emit_ret(char *p) {
+  *p++ = 0x80; // opcode for RETL (Return)
+  *p++ = 0x02;
+  *p++ = 0x10;
+  *p++ = 0x00;
+  return p;
+}
+
+int convert_pointers_to_branches(void *head, int chunk_size) {
+  int remain = cycle_len(head);
+  chunk_size = (remain < chunk_size)
+                   ? remain
+                   : remain / (1 << lround(log2(1.0 * remain / chunk_size)));
+  int base_chunk_size = chunk_size;
+  int chunks_remaining = remain / chunk_size;
+  int chunk_count = 0;
+  const int br_code_len = 20; // len(lui) + len(jalr)
+  char *p = (char *)head;
+  do {
+    if (!chunk_count) chunk_count = remain / chunks_remaining;
+    char *next = *((char **)p);
+    for (int i = 8; i < br_code_len; i++) {
+      if (p[i]) {
+        fprintf(stderr, "not enough space to convert a pointer to branches\n");
+        exit(1);
+      }
+    }
+    p = riscv64_emit_lui_a0_imm64(p, (intptr_t)next);
+    --remain;
+    if (--chunk_count == 0) {
+      p = riscv64_emit_ret(p);
+      --chunks_remaining;
+    } else {
+      p = riscv64_emit_jalr_a0(p);
+    }
+    p = next;
+  } while (p != head);
+  return base_chunk_size;
+}
+
 #elif defined(__x86_64__)
 
 static char *x64_emit_mov_imm64_rax(char *p, uint64_t imm64) {

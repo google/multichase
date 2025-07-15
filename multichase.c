@@ -492,6 +492,12 @@ static void *thread_start(void *data) {
         args->x.genchase_args->arena,
         args->x.genchase_args->arena + args->x.genchase_args->total_memory);
 #endif
+#if defined(__riscv) && __riscv_xlen == 64
+    __builtin___clear_cache(
+        args->x.genchase_args->arena,
+        args->x.genchase_args->arena + args->x.genchase_args->total_memory);
+#endif
+
   }
   
   // now flush our caches
