@@ -26,6 +26,13 @@ ifeq ($(ARCH),aarch64)
  endif
 endif
 
+ifeq ($(ARCH),riscv64)
+ CAP ?= $(shell cat /proc/cpuinfo | grep -E 'zihintpause' | head -1)
+ ifneq (,$(findstring zihintpause,$(CAP)))
+  CFLAGS+=-march=rv64gc_zihintpause
+ endif
+endif
+
 EXE=multichase multiload fairness pingpong
 
 all: $(EXE)
