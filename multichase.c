@@ -487,12 +487,7 @@ static void *thread_start(void *data) {
   if (!strcmp(args->x.chase->name, "branch")) {
     void *p = args->x.cycle[0];
     args->x.branch_chunk_size = convert_pointers_to_branches(p, 200);
-#if defined(__aarch64__)
-    __builtin___clear_cache(
-        args->x.genchase_args->arena,
-        args->x.genchase_args->arena + args->x.genchase_args->total_memory);
-#endif
-#if defined(__riscv) && __riscv_xlen == 64
+#if defined(__aarch64__) || (defined(__riscv) && __riscv_xlen == 64)
     __builtin___clear_cache(
         args->x.genchase_args->arena,
         args->x.genchase_args->arena + args->x.genchase_args->total_memory);
