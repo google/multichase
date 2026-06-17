@@ -563,7 +563,7 @@ int main(int argc, char **argv) {
 
   setvbuf(stdout, NULL, _IOLBF, BUFSIZ);
 
-  while ((c = getopt(argc, argv, "ac:F:p:HLm:Nn:oO:S:s:T:t:vXyW:f:M")) != -1) {
+  while ((c = getopt(argc, argv, "ac:F:p:HLm:Nn:oO:s:T:t:vXyW:f:M")) != -1) {
     switch (c) {
       case 'a':
         print_average = 1;
@@ -774,6 +774,7 @@ int main(int argc, char **argv) {
         "-W mbind list  list of node:weight,... pairs for allocating memory\n"
         "               has no effect if -H flag is specified\n"
         "               0:10,1:90 weights it as 10%% on 0 and 90%% on 1\n");
+    fprintf(stderr, "-v             verbose output (default %d)\n", verbosity);
     fprintf(stderr, "-X             do not set thread affinity\n");
     fprintf(stderr, "-y             print timestamp in front of each line\n");
     exit(1);

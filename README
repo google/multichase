@@ -48,7 +48,7 @@ Multiload - a superset of multichase which runs latency, memory bandwidth, and l
 
   - Bandwidth Only
     Multiload can run a memory bandwidth test using the "-l" load argument. The "-c" chase argument MUST NOT be used.
-    Below command runs 5 samples (~2.5 seconds each), using 16 threads, using the glibc memcpy() function,
+    Below command runs 5 samples (2 seconds each), using 16 threads, using the glibc memcpy() function,
     using a 512M buffer per thread.
 
     $ multiload -n 5 -t 16 -m 512M -l memcpy-libc
@@ -56,7 +56,7 @@ Multiload - a superset of multichase which runs latency, memory bandwidth, and l
   - Loaded Latency.
     Multiload can run 1 pointer chaser thread on logical cpu0 with multiple memory bandwidth load threads.
     The "-c chaseload" arg MUST be used. The "-l" arg MUST be used with one of the memory load arguments.
-    Below command runs 5 samples (~2.5 seconds each), on 16 threads (1 chase, 15 stream-sum bandwidth loads),
+    Below command runs 5 samples (2 seconds each), on 16 threads (1 chase, 15 stream-sum bandwidth loads),
     using a 512M buffer per thread. The chase thread uses a stride=16.
 
     $ multiload -s 16 -n 5 -t 16 -m 512M -c chaseload -l stream-sum
