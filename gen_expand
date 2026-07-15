@@ -15,10 +15,11 @@
 use warnings;
 use strict;
 
-defined(my $n = shift)
-        or die "usage: $0 n\n";
+my $n = shift;
+(defined($n) && $n =~ /^\d+$/ && $n >= 1)
+        or die "usage: $0 <positive_integer_n>\n";
 
-# special cases i can't be bothered to handle otherwise
+# special cases I can't be bothered to handle otherwise
 print "#define x1(x) x\n";
 print "#define x2(x) x x\n";
 print "#define x3(x) x2(x) x\n";
