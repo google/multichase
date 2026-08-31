@@ -922,7 +922,7 @@ int main(int argc, char **argv) {
 
   setvbuf(stdout, NULL, _IOLBF, BUFSIZ);
 
-  while ((c = getopt(argc, argv, "ac:d:l:F:p:HLm:n:oO:S:s:T:t:vXyW:i:u:")) != -1) {
+  while ((c = getopt(argc, argv, "ac:d:l:F:p:HLm:n:oO:s:T:t:vXyW:i:u:")) != -1) {
     switch (c) {
       case 'a':
         print_average = 1;
@@ -1192,7 +1192,7 @@ int main(int argc, char **argv) {
     fprintf(stderr,
             "-L             use longer chase\n");
     fprintf(stderr,
-            "-n nr_samples  nr of 0.5 second samples to use (default %zu, 0 = "
+            "-n nr_samples  nr of 2.0 second samples to use (default %zu, 0 = "
             "infinite)\n",
             DEF_NR_SAMPLES);
     fprintf(stderr,

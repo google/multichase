@@ -137,6 +137,7 @@ int main(int argc, char **argv) {
         " [-n sample_nr]\n"
         " [-s sweep_max]\n"
         " [-t time]\n"
+        " [-S separator]\n"
         "By default runs one thread on each cpu, use taskset(1) to "
         "restrict operation to fewer cpus/threads.\n"
         "The optional delay_mask specifies a mask of cpus on which to delay "
@@ -146,7 +147,8 @@ int main(int argc, char **argv) {
         "The optional sweep_max causes testing across multiple different "
         "cache lines.\n"
         "The optional time determines how often to poll results (float in "
-        "seconds).\n",
+        "seconds).\n"
+        "The optional separator determines the output field separator (e.g., ',' for CSV).\n",
         argv[0]);
     exit(1);
   }
