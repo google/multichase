@@ -78,7 +78,7 @@ typedef union {
   char pad[AVOID_FALSE_SHARING];
   struct {
     unsigned thread_num;        // which thread is this
-    unsigned count;             // count of number of iterations
+    uint64_t count;             // count of number of iterations
     void *cycle[MAX_PARALLEL];  // initial address for the chases
     const char *extra_args;
     int dummy;  // useful for confusing the compiler
@@ -493,7 +493,7 @@ static void *thread_start(void *data) {
         args->x.genchase_args->arena + args->x.genchase_args->total_memory);
 #endif
   }
-  
+
   // now flush our caches
   if (args->x.cache_flush_size) {
     size_t nr_elts = args->x.cache_flush_size / sizeof(size_t);
