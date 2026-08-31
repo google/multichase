@@ -537,6 +537,7 @@ static void load_stream_triad(per_thread_t *t) {
   register double *b;
   register double *c;
   register double *tmp;
+  register double scalar = 3.0;
 
   load_loop =
       t->x.load_total_memory -
@@ -569,7 +570,7 @@ static void load_stream_triad(per_thread_t *t) {
     c = tmp;
 
     for (i = 0; i < N; ++i) {
-      a[i] = b[i] + c[i];
+      a[i] = b[i] + scalar * c[i];
     }
     LOAD_MEMORY_SAMPLE_MIBPS
   } while (1);
