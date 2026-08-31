@@ -28,6 +28,8 @@ endif
 
 EXE=multichase multiload fairness pingpong
 
+.PHONY: all clean depend
+
 all: $(EXE)
 
 clean:
@@ -40,10 +42,9 @@ multichase: multichase.o permutation.o arena.o br_asm.o util.o
 
 multiload: multiload.o permutation.o arena.o util.o
 
-fairness: LDLIBS += -lm
 
 expand.h: gen_expand
-	./gen_expand 200 >expand.h.tmp
+	perl ./gen_expand 200 >expand.h.tmp
 	mv expand.h.tmp expand.h
 
 depend:
