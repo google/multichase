@@ -632,6 +632,17 @@ static void load_stream_triad_nontemporal_injection_delay(per_thread_t *t) {
       if (i % num_elem_twocachelines == 0) delay_until_iteration(t->x.delay);
 #if defined(__aarch64__)
       asm volatile ("stnp %0, %1, [%2]" :: "r"(b[i]+c[i]), "r"(b[i+1]+c[i+1]), "r" (a+i));
+#elif defined(__riscv) && __riscv_xlen == 64
+      // sd (Store Doubleword) is a risc-v memory store instruction that stores a 64-bit (8-byte) value from a register to memory. 
+      // "sd %0, (%2)\n\t" stores 64-bit value from register %0 to memory address contained in register %2,
+      // "sd %1, 8(%2)" stores 64-bit value from register %1 to memory address [%2] + 8.
+      asm volatile ("sd %0, (%2)\n\t"
+              "sd %1, 8(%2)"
+              : // no outputs
+              : "r"(b[i]+c[i]),
+                "r"(b[i+1]+c[i+1]),
+                "r" (a+i)
+              : "memory");
 #elif defined(__x86_64__)
       _mm_stream_si64(&((long long*)a)[i], b[i]+c[i]);
       _mm_stream_si64(&((long long*)a)[i+1], b[i+1]+c[i+1]);

@@ -40,6 +40,8 @@ static inline void cpu_relax(void) {
 }
 #elif defined(__aarch64__)
 #define cpu_relax() asm volatile("yield" ::: "memory")
+#elif defined(__riscv) && __riscv_xlen == 64
+#define cpu_relax() asm volatile("pause" ::: "memory")
 #else
 #warning "no cpu_relax for your cpu"
 #define cpu_relax() \
