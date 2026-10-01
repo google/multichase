@@ -462,9 +462,11 @@ static const chase_t chases[] = {
      * nxt_sample ); */                                                      \
     /* printf(" %ld,%ld,%ld,%.0f:%.0f(%.1fMiBs)\n", cur_sample, loops,       \
      * t->x.count, bite_sum, timetot, mibps); */                             \
-    /* update the MiB/s count. Main thread will read and set to 0 so we know \
-     * this sample is done. */                                               \
-    __sync_add_and_fetch(&t->x.count, (uint64_t)mibps);                      \
+    /* Report bytes/s (not MiB/s) so a slow thread (< 1 MiB/s) does not      \
+     * truncate to 0, which main would read as "not ready" forever. Main     \
+     * thread converts back to MiB/s, then sets count to 0 for next sample.  \
+     */                                                                      \
+    __sync_add_and_fetch(&t->x.count, (uint64_t)(mibps * 1024 * 1024));      \
     cur_sample = nxt_sample;                                                 \
     loops = 0;                                                               \
     time0 = (double)now_nsec();                                              \
@@ -1435,9 +1437,10 @@ int main(int argc, char **argv) {
                  mibps);
         }
       } else {
-        load_thd_sum += (double)cur_samples[i];
+        cur_samples[i] /= (1024 * 1024);  // load threads report bytes/s
+        load_thd_sum += cur_samples[i];
         if (verbosity > 1) {
-          printf(" ML(%ld)%.0f(MiB/s)", i, cur_samples[i]);
+          printf(" ML(%ld)%.3f(MiB/s)", i, cur_samples[i]);
         }
       }
     }
@@ -1469,7 +1472,7 @@ int main(int argc, char **argv) {
       if (load_thd_sum < load_min_mibps) load_min_mibps = load_thd_sum;
       load_running_sum += load_thd_sum;
       if (verbosity > 0) {
-        printf(" main: threads=%ld, Total(MiB/s)=%.*f, PerThread=%.f\n",
+        printf(" main: threads=%ld, Total(MiB/s)=%.*f, PerThread=%.3f\n",
                nr_load_threads, load_thd_sum < 100. ? 3 : 1, load_thd_sum,
                load_thd_sum / nr_load_threads);
       }
