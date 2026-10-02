@@ -12,7 +12,7 @@
 # limitations under the License.
 #
 CFLAGS=-std=gnu99 -g -O3 -fomit-frame-pointer -fno-unroll-loops -Wall -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wmissing-declarations -Wnested-externs -Wpointer-arith -W -Wno-unused-parameter -Werror -pthread -Wno-tautological-compare
-LDFLAGS=-g -O3 -static -pthread
+LDFLAGS=-g -O3 -pthread
 LDLIBS=-lrt -lm
 
 ARCH ?= $(shell uname -m)
