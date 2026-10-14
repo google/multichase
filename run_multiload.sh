@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-ARCH=$(uname -p)
+ARCH=$(uname -m)
 HOSTNAME=$(cat /etc/hostname)
 DATE=`date +"%Y_%m-%d_%H.%M.%S.%p"`
 TOPDIR=$(pwd)
@@ -35,12 +35,12 @@ log_without_date(){
 ################################################################################
 RUN_TEST_TYPE=2     # 0=latency only, 1=load only, 2=loaded latency
 ITERATIONS=3        # Number of times the program is run. Due to "Samples" above, reliable data can typically be had with only 1 iteration.
-SAMPLES=5           # Specfies the number of data samples taken during a single run of mulitiload
+SAMPLES=5           # Specifies the number of data samples taken during a single run of multiload
                     # ~2sec per sample + 4sec warmup. Duration depends on LOAD_DELAY_* defines in multiload.c
                     # Default is to return the best latency of the samples. Command "-a" can be used to return the average.
 SOCKET_EVAL=1                # 1=1P testing on a 2P system. 2=2P testing on a 2P system. Does not apply to a Non-Numa system.
 USE_REMOTE_MEMNODE=0  # Numactl only: 0= use localalloc, 1=force SOCKET_EVAL=1 and use remote memory (ie. 2nd half of the numa nodes)
-THREAD_AFFINITY_ENABLED=1  # enables use of tasket/numactl for thread control
+THREAD_AFFINITY_ENABLED=1  # enables use of taskset/numactl for thread control
 MPSTAT_PROFILE_ENABLE=0     #enables mpstat data collection
 VMSTAT_PROFILE_ENABLE=0     #enables vmstat data collection
 PROFILING_INTERVAL_SEC=3    #defines sampling rate
@@ -87,17 +87,17 @@ if [ "$#" == "0" ] ; then
     usage
     exit 1
 fi
-if [ ! -z $1 ]; then
+if [ -n "$1" ]; then
     RUN_TEST_TYPE=$1
-    if [ ! -z $2 ]; then
+    if [ -n "$2" ]; then
         ITERATIONS=$2
-        if [ ! -z $3 ]; then
+        if [ -n "$3" ]; then
             SAMPLES=$3
-            if [ ! -z $4 ]; then
+            if [ -n "$4" ]; then
                 SOCKET_EVAL=$4
-                if [ ! -z $5 ]; then
+                if [ -n "$5" ]; then
                     USE_REMOTE_MEMNODE=$5
-                    if [ ! -z $6 ]; then
+                    if [ -n "$6" ]; then
                         THREAD_AFFINITY_ENABLED=$6
                     fi
                 fi
@@ -189,7 +189,7 @@ get_hardware_config ()
 
         phycore_num=`lscpu | grep "Core(s) per socket" | tr -d ' ' | cut -d':' -f2 2> /dev/null`
         core_threads=`lscpu | grep "Thread(s) per core:" | tr -d ' ' | cut -d':' -f2 2> /dev/null`
-        cputhread_num=`lscpu | grep "CPU(s):            " | head -n 1 | tr -d ' ' | cut -d ':' -f2 2> /dev/null`
+        cputhread_num=`lscpu | awk -F: '/^CPU\(s\):/ {print $2}' | tr -d ' ' 2> /dev/null`
         numa_num=`lscpu | grep "NUMA node(s)" | tr -d ' ' | cut -d':' -f2 2> /dev/null`
         socket_num=`lscpu | grep "Socket(s)" | tr -d ' ' | cut -d':' -f2 2> /dev/null`
     MEMBIND_LIST=`numactl --show 2> /dev/null | grep membind | cut -d':' -f2 2> /dev/null`
@@ -197,9 +197,9 @@ get_hardware_config ()
         let ht_threads=$phycore_num*$core_threads
     #echo "get_hardware_config: phyend=$phycore_end, ht_t=$ht_threads"
 
-        if [ -z $cputhread_num ]; then
+        if [ -z "$cputhread_num" ]; then
                 log_without_date "Can't find the CPU(s) core count, exiting"
-                exit $?
+                exit 1
         else
                 CPUTHREADS=$cputhread_num
         fi
@@ -490,20 +490,21 @@ run_test(){
 
 parse(){
     first=1
-    rm -f out.txt
+    local tmp_out
+    tmp_out=$(mktemp)
     while IFS= read -r line; do
         #Only keep 1st header line
         if [ "$first" -eq "1" ]; then
-            echo "$line" > out.txt
+            echo "$line" > "$tmp_out"
             first=0
         elif [[ ! $line =~ "ample" ]]; then
-            echo "$line" >> out.txt
+            echo "$line" >> "$tmp_out"
         fi
     done < ${OUTPUT_DIR}/$1.txt
 
     #delete all spaces and tabs
-    tr -d '[[:blank:]]' < out.txt > ${OUTPUT_DIR}/$1.csv
-    rm -f out.txt
+    tr -d '[:blank:]' < "$tmp_out" > ${OUTPUT_DIR}/$1.csv
+    rm -f "$tmp_out"
 }
 
 ################################################################################
