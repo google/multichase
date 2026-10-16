@@ -841,6 +841,12 @@ static void *thread_start(void *data) {
     }
     // now flush our caches
     if (args->x.cache_flush_size) {
+#if HAVE_CLEAN_INVALIDATE_RANGE
+      // Write the chase out to memory instead of reading a flush buffer, so
+      // the chase starts uncached and clean rather than dirty.
+      clean_invalidate_range(args->x.genchase_args->arena,
+                             args->x.genchase_args->total_memory);
+#else
       size_t nr_elts = args->x.cache_flush_size / sizeof(size_t);
       size_t *p = args->x.flush_arena;
       size_t sum = 0;
@@ -850,6 +856,7 @@ static void *thread_start(void *data) {
         --nr_elts;
       }
       args->x.dummy += sum;
+#endif
     }
   } else {
     if (verbosity > 2)
@@ -861,6 +868,8 @@ static void *thread_start(void *data) {
                              -1) + args->x.load_offset;
     memset(args->x.load_arena, 1,
            args->x.load_total_memory);  // ensure pages are mapped
+    // Start clean, so read-only loads do not write dirty lines back.
+    clean_invalidate_range(args->x.load_arena, args->x.load_total_memory);
   }
 
   if (verbosity > 2)
@@ -1179,6 +1188,9 @@ int main(int argc, char **argv) {
             "constructing\n"
             "         the chase/memload and before starting the benchmark (use "
             "with nta)\n"
+            "         on aarch64 any non-zero value instead writes the chase "
+            "back to\n"
+            "         memory with DC CIVAC\n"
             "         default: %zu\n",
             DEF_CACHE_FLUSH);
     fprintf(stderr, "-p nnnn[kmg]   backing page size to use (default %zu)\n",
@@ -1298,7 +1310,11 @@ int main(int argc, char **argv) {
       default_page_size, false, nr_threads * sizeof(per_thread_t), -1);
   void *flush_arena = NULL;
   if (verbosity > 2) printf("allocate cache flush\n");
-  if (cache_flush_size) {
+  // Only chase threads read the flush buffer, and not at all when the chase
+  // is cleaned with clean_invalidate_range(). Otherwise it only adds 64 MiB
+  // of dirty lines to the caches.
+  if (cache_flush_size && !HAVE_CLEAN_INVALIDATE_RANGE &&
+      run_test_type != RUN_BANDWIDTH) {
     flush_arena = alloc_arena_mmap(default_page_size, false, cache_flush_size,
                                    -1);
     memset(flush_arena, 1, cache_flush_size);  // ensure pages are mapped
