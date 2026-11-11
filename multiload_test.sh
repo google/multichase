@@ -23,7 +23,7 @@ fail() {
   exit 1
 }
 
-# 1. Undersized bandwidth buffers must fail fast with exit status 1 rather than
+# 1. Undersized stream buffers must fail fast with a clear error rather than
 #    segfaulting on unsigned underflow or hanging on an empty loop.
 expect_too_small() {
   local load="$1" mem="$2" stride="$3"
@@ -42,14 +42,17 @@ expect_too_small() {
   esac
 }
 
+expect_too_small stream-sum 120 8
+expect_too_small stream-copy 184 8
 expect_too_small stream-triad 128 64
-expect_too_small stream-copy 8 8
-expect_too_small stream-triad 192 64
-expect_too_small stream-triad 320 64
-expect_too_small stream-triad-nontemporal-injection-delay 128 64
-expect_too_small stream-triad-nontemporal-injection-delay 320 64
+expect_too_small stream-triad 248 8
+expect_too_small stream-triad-nontemporal-injection-delay 248 8
 
-# 2. Valid minimum-size runs must complete cleanly and report positive bandwidth.
+# 2. Run valid boundary cases in parallel (~6s wall-clock instead of ~45s):
+#    - stream-triad at -O 0 must NOT shift an already-aligned load_arena by +64B
+#    - each stream load at its exact minimum with worst-case -O 1 (pad = 63)
+#      must align `a` to 64 bytes and complete cleanly
+#    - byte-oriented libc loads must still work down to 8 bytes
 run_case() {
   local tag="$1"
   shift
@@ -58,16 +61,17 @@ run_case() {
   echo "${rc}" >"${TMPDIR_TEST}/${tag}.rc"
 }
 
-run_case sum_min      -l stream-sum   -m 8   -s 8  -n 1 -t 1 &
-run_case copy_min     -l stream-copy  -m 16  -s 8  -n 1 -t 1 &
-run_case triad_min    -l stream-triad -m 384 -s 64 -n 1 -t 1 &
-run_case triad_nt_min -l stream-triad-nontemporal-injection-delay -m 384 -s 64 -n 1 -t 1 &
-run_case memcpy_tiny  -l memcpy-libc  -m 8   -s 8  -n 1 -t 1 &
-run_case memset_tiny  -l memset-libc  -m 8   -s 8  -n 1 -t 1 &
-run_case memsetz_tiny -l memsetz-libc -m 8   -s 8  -n 1 -t 1 &
+run_case triad_aligned -v -v -l stream-triad -m 256 -s 64 -O 0 -n 1 -t 1 &
+run_case sum_min       -v -v -l stream-sum   -m 128 -s 8  -O 1 -n 1 -t 1 &
+run_case copy_min      -v -v -l stream-copy  -m 192 -s 8  -O 1 -n 1 -t 1 &
+run_case triad_min     -v -v -l stream-triad -m 256 -s 8  -O 1 -n 1 -t 1 &
+run_case triad_nt_min  -v -v -l stream-triad-nontemporal-injection-delay -m 256 -s 8 -O 1 -n 1 -t 1 &
+run_case memcpy_tiny   -l memcpy-libc  -m 8 -s 8 -n 1 -t 1 &
+run_case memset_tiny   -l memset-libc  -m 8 -s 8 -n 1 -t 1 &
+run_case memsetz_tiny  -l memsetz-libc -m 8 -s 8 -n 1 -t 1 &
 wait
 
-for tag in sum_min copy_min triad_min triad_nt_min memcpy_tiny memset_tiny memsetz_tiny; do
+for tag in triad_aligned sum_min copy_min triad_min triad_nt_min memcpy_tiny memset_tiny memsetz_tiny; do
   rc=$(cat "${TMPDIR_TEST}/${tag}.rc")
   if [[ "${rc}" -ne 0 ]]; then
     fail "${tag} exited with rc=${rc}: $(cat "${TMPDIR_TEST}/${tag}.out")"
@@ -76,5 +80,26 @@ for tag in sum_min copy_min triad_min triad_nt_min memcpy_tiny memset_tiny memse
     fail "${tag} did not report positive bandwidth: $(cat "${TMPDIR_TEST}/${tag}.out")"
   fi
 done
+
+check_alignment() {
+  local tag="$1" expected_pad="$2"
+  local line arena a
+  line=$(awk '/load_arena=/ {print; exit}' "${TMPDIR_TEST}/${tag}.out")
+  [[ -n "${line}" ]] || fail "${tag} missing load_arena debug line"
+  arena=$(echo "${line}" | sed -E 's/.*load_arena=(0x[0-9a-fA-F]+).*/\1/')
+  a=$(echo "${line}" | sed -E 's/.* a=(0x[0-9a-fA-F]+).*/\1/')
+  if (( a % 64 != 0 )); then
+    fail "${tag}: expected 64B-aligned a, got ${a} (${line})"
+  fi
+  if (( a - arena != expected_pad )); then
+    fail "${tag}: expected pad=${expected_pad}, got $((a - arena)) (${line})"
+  fi
+}
+
+check_alignment triad_aligned 0
+check_alignment sum_min 63
+check_alignment copy_min 63
+check_alignment triad_min 63
+check_alignment triad_nt_min 63
 
 echo "PASS"
