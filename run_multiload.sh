@@ -75,6 +75,7 @@ usage(){
     echo "   memcpy-libc    1:1 rd:wr ratio - glibc memcpy()"
     echo "   memset-libc    0:1 rd:wr ratio - glibc memset() non-zero data"
     echo "   memsetz-libc   0:1 rd:wr ratio - glibc memset() zero data"
+    echo "   memset-nt      0:1 rd:wr ratio - non-temporal full cache line stores (no RFO)"
     echo "   stream-copy    1:1 rd:wr ratio - lmbench stream copy instructions b[i]=a[i] (actual binary depends on compiler & -O level)"
     echo "   stream-sum     1:0 rd:wr ratio - lmbench stream sum instructions: a[i]+=1   (actual binary depends on compiler & -O level)"
     echo "   stream-triad   2:1 rd:wr ratio - lmbench stream triad instructions: a[i]=b[i]+(scalar*c[i])"
