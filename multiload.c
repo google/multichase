@@ -530,30 +530,58 @@ static void load_memsetz_libc(per_thread_t *t) {
 }
 
 //--------------------------------------------------------------------------------------------------------
+// Aligns a thread's bandwidth arena to a 64-byte cache-line boundary
+// (DEF_CACHELINE) and computes the per-sub-buffer byte size.
+//
+// Args:
+//   t: Thread state holding `load_arena` (base address) and `load_total_memory`
+//     (total mapped bytes available starting at `load_arena`).
+//   ops: Number of equal-sized sub-buffers carved out of the arena (>= 1; e.g.
+//     1 for sum/memset-nt, 2 for copy, 3 for triad).
+//   load_loop: Output set to the byte size of each sub-buffer, rounded down to
+//     a 64-byte cache-line multiple so `b = a + N` and `c = b + N` stay
+//     cache-line aligned too.
+//
+// Returns:
+//   The first 64-byte-aligned address at or after `t->x.load_arena`.
+//
+// Bounds / no-underflow guarantees:
+//   - `[arena, arena + load_total_memory)` is an already-mapped region of at
+//     least `(ops + 1) * DEF_CACHELINE` bytes (>= 128 > 63), so `arena + 63`
+//     stays in-bounds and cannot wrap `uintptr_t`, and `0 <= pad <= 63`
+//     (`aligned >= arena`).
+//   - `load_total_memory > pad` is checked before subtracting `pad`, avoiding
+//     the unsigned underflow that crashed upstream when `total_memory < 192`.
+//   - With `load_total_memory >= (ops + 1) * DEF_CACHELINE` (enforced by
+//     `memload_min_memory`) and `pad <= 63`, `usable >= ops * 64 + 1`, so
+//     `*load_loop >= 64` (never empty) and
+//     `pad + ops * (*load_loop) <= load_total_memory` (never overruns the
+//     allocation).
+static inline void *align_load_arena(const per_thread_t *t, size_t ops,
+                                     uint64_t *load_loop) {
+  const uintptr_t mask = DEF_CACHELINE - 1;
+  uintptr_t arena = (uintptr_t)t->x.load_arena;
+  uintptr_t aligned = (arena + mask) & ~mask;
+  size_t pad = aligned - arena;
+  size_t usable =
+      (t->x.load_total_memory > pad) ? (t->x.load_total_memory - pad) : 0;
+  *load_loop = (usable / ops) & ~(uint64_t)mask;
+  return (void *)aligned;
+}
+
+//--------------------------------------------------------------------------------------------------------
 static void load_stream_triad(per_thread_t *t) {
 #define LOOP_OPS 3
-#define LOOP_ALIGN 64
   uint64_t load_loop, load_bites;
   register uint64_t N, i;
-  register double *a;
-  register double *b;
-  register double *c;
+  register double *a = align_load_arena(t, LOOP_OPS, &load_loop);
+  N = load_loop / sizeof(double);
+  load_bites = N * sizeof(double) * LOOP_OPS;
+  register double *b = a + N;
+  register double *c = b + N;
   register double *tmp;
   register double scalar = 3.0;
 
-  load_loop =
-      t->x.load_total_memory -
-      (LOOP_OPS * LOOP_ALIGN);  // subract to allow aligning count/addresses
-  load_loop = (load_loop / LOOP_OPS) &
-              ~(LOOP_ALIGN - 1);  // divide by 3 buffers and align byte count on
-                                  // LOOP_ALIGN byte multiple
-  N = load_loop / sizeof(double);
-  load_bites = N * sizeof(double) * LOOP_OPS;
-  size_t aa = (((size_t)t->x.load_arena + LOOP_ALIGN) &
-               ~(LOOP_ALIGN - 1));  // align on 64 byte address
-  a = (double *)aa;
-  b = a + N;
-  c = b + N;
   if (verbosity > 1) {
     printf(
         "load_arena=%p, load_total_memory=0x%lX, load_loop=0x%lX, N=0x%lX, "
@@ -577,7 +605,6 @@ static void load_stream_triad(per_thread_t *t) {
     LOAD_MEMORY_SAMPLE_MIBPS
   } while (1);
 #undef LOOP_OPS
-#undef LOOP_ALIGN
 }
 
 static inline void delay_until_iteration(uint64_t iteration) {
@@ -590,28 +617,15 @@ static inline void delay_until_iteration(uint64_t iteration) {
 // Stream triad pattern with nontermpoal hint and adjustable injection delay
 static void load_stream_triad_nontemporal_injection_delay(per_thread_t *t) {
 #define LOOP_OPS 3
-#define LOOP_ALIGN 64
   uint64_t load_loop, load_bites;
   register uint64_t N, i;
-  register uint64_t *a;
-  register uint64_t *b;
-  register uint64_t *c;
-  register uint64_t *tmp;
   const uint64_t num_elem_twocachelines = DEF_CACHELINE / sizeof(uint64_t) * 2;
-
-  load_loop =
-      t->x.load_total_memory -
-      (LOOP_OPS * LOOP_ALIGN);  // subtract to allow aligning count/addresses
-  load_loop = (load_loop / LOOP_OPS) &
-              ~(LOOP_ALIGN - 1);  // divide by 3 buffers and align byte count on
-                                  // LOOP_ALIGN byte multiple
+  register uint64_t *a = align_load_arena(t, LOOP_OPS, &load_loop);
   N = load_loop / sizeof(uint64_t);
   load_bites = N * sizeof(uint64_t) * LOOP_OPS;
-  size_t aa = (((size_t)t->x.load_arena + LOOP_ALIGN) &
-               ~(LOOP_ALIGN - 1));  // align on 64 byte address
-  a = (uint64_t *)aa;
-  b = a + N;
-  c = b + N;
+  register uint64_t *b = a + N;
+  register uint64_t *c = b + N;
+  register uint64_t *tmp;
 
   if (verbosity > 1) {
     printf(
@@ -645,19 +659,24 @@ static void load_stream_triad_nontemporal_injection_delay(per_thread_t *t) {
     LOAD_MEMORY_SAMPLE_MIBPS
   } while (1);
 #undef LOOP_OPS
-#undef LOOP_ALIGN
 }
 
 //--------------------------------------------------------------------------------------------------------
 static void load_stream_copy(per_thread_t *t) {
 #define LOOP_OPS 2
-  uint64_t load_loop = t->x.load_total_memory / LOOP_OPS;
+  uint64_t load_loop;
+  register double *a = align_load_arena(t, LOOP_OPS, &load_loop);
   register uint64_t N = load_loop / sizeof(double);
   uint64_t load_bites = N * sizeof(double) * LOOP_OPS;
   register uint64_t i;
-  register double *a = (double *)t->x.load_arena;
   register double *b = a + N;
   register double *tmp;
+
+  if (verbosity > 1) {
+    printf("load_arena=%p, load_total_memory=0x%lX, load_loop=0x%lX, N=0x%lX, "
+           "a=%p, b=%p\n",
+           (char *)t->x.load_arena, t->x.load_total_memory, load_loop, N, a, b);
+  }
 
   LOAD_MEMORY_INIT_MIBPS
   uint64_t interval_ns = t->x.load_interval_ns;
@@ -678,12 +697,18 @@ static void load_stream_copy(per_thread_t *t) {
 //--------------------------------------------------------------------------------------------------------
 static void load_stream_sum(per_thread_t *t) {
 #define LOOP_OPS 1
-  uint64_t load_loop = t->x.load_total_memory / LOOP_OPS;
+  uint64_t load_loop;
+  register uint64_t *a = align_load_arena(t, LOOP_OPS, &load_loop);
   register uint64_t N = load_loop / sizeof(uint64_t);
   uint64_t load_bites = N * sizeof(uint64_t) * LOOP_OPS;
   register uint64_t i;
-  register uint64_t *a = (uint64_t *)t->x.load_arena;
   register uint64_t s = 0;
+
+  if (verbosity > 1) {
+    printf("load_arena=%p, load_total_memory=0x%lX, load_loop=0x%lX, N=0x%lX, "
+           "a=%p\n",
+           (char *)t->x.load_arena, t->x.load_total_memory, load_loop, N, a);
+  }
 
   LOAD_MEMORY_INIT_MIBPS
   uint64_t interval_ns = t->x.load_interval_ns;
@@ -765,6 +790,32 @@ static const chase_t memloads[] = {
         .requires_arg = 0,
         .parallelism = 0,
     }};
+
+// Returns the minimum `total_memory` (in bytes) needed for `m` to transfer a
+// non-zero number of bytes per loop iteration at any `-O` offset.
+static size_t memload_min_memory(const chase_t *m) {
+  if (m->fn == load_memcpy_libc) {
+    // Splits `load_total_memory` in half (`load_total_memory / 2`) without
+    // cache-line alignment, so 2 bytes gives at least 1 byte per buffer.
+    return 2;
+  }
+  if (m->fn == load_memset_libc || m->fn == load_memsetz_libc) {
+    // Writes raw `char *` bytes across `load_total_memory` directly without
+    // alignment or splitting, so any non-empty buffer (>= 1 byte) works.
+    return 1;
+  }
+  // Cache-line-aligned loads (`align_load_arena`) skip up to 63 bytes of
+  // alignment padding and carve the rest into `ops` 64-byte-aligned
+  // sub-buffers, requiring `ops * 64 + 63` bytes (rounded up to the next
+  // `sizeof(void *)` stride multiple: `(ops + 1) * DEF_CACHELINE`).
+  if (m->fn == load_stream_sum) {
+    return 2 * DEF_CACHELINE;  // ops = 1 (128 bytes)
+  }
+  if (m->fn == load_stream_copy) {
+    return 3 * DEF_CACHELINE;  // ops = 2 (192 bytes)
+  }
+  return 4 * DEF_CACHELINE;  // triad loads: ops = 3 (256 bytes)
+}
 
 static pthread_mutex_t wait_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t wait_cond = PTHREAD_COND_INITIALIZER;
@@ -1253,6 +1304,14 @@ int main(int argc, char **argv) {
   } else {
     genchase_args.total_memory -=
         genchase_args.total_memory % genchase_args.tlb_locality;
+  }
+  size_t min_memload_bytes = memload_min_memory(memload);
+  if ((run_test_type != RUN_CHASE) &&
+      (genchase_args.total_memory < min_memload_bytes)) {
+    fprintf(stderr,
+            "total_memory is too small for %s, need at least %zu bytes\n",
+            memload->name, min_memload_bytes);
+    exit(1);
   }
 
   genchase_args.nr_mixer_indices =
