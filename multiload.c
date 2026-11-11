@@ -766,6 +766,32 @@ static const chase_t memloads[] = {
         .parallelism = 0,
     }};
 
+// Returns the minimum `total_memory` (in bytes) needed for `m` to transfer a
+// non-zero number of bytes per loop iteration.
+static size_t memload_min_memory(const chase_t *m) {
+  if (m->fn == load_memcpy_libc) {
+    // Splits `load_total_memory` in half (`load_total_memory / 2`), so 2 bytes
+    // gives at least 1 byte per buffer.
+    return 2;
+  }
+  if (m->fn == load_memset_libc || m->fn == load_memsetz_libc) {
+    // Writes raw `char *` bytes across `load_total_memory` directly, so any
+    // non-empty buffer (>= 1 byte) works.
+    return 1;
+  }
+  if (m->fn == load_stream_sum) {
+    // Reads `uint64_t` elements across `load_total_memory`.
+    return sizeof(uint64_t);
+  }
+  if (m->fn == load_stream_copy) {
+    // Splits `load_total_memory` into two `double` buffers (`N >= 1`).
+    return 2 * sizeof(double);
+  }
+  // Triad loads subtract `3 * 64 = 192` bytes before dividing into 3
+  // 64-byte-aligned sub-buffers (`(384 - 192) / 3 = 64`).
+  return 6 * DEF_CACHELINE;
+}
+
 static pthread_mutex_t wait_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t wait_cond = PTHREAD_COND_INITIALIZER;
 static size_t nr_to_startup;
@@ -1253,6 +1279,14 @@ int main(int argc, char **argv) {
   } else {
     genchase_args.total_memory -=
         genchase_args.total_memory % genchase_args.tlb_locality;
+  }
+  size_t min_memload_bytes = memload_min_memory(memload);
+  if ((run_test_type != RUN_CHASE) &&
+      (genchase_args.total_memory < min_memload_bytes)) {
+    fprintf(stderr,
+            "total_memory is too small for %s, need at least %zu bytes\n",
+            memload->name, min_memload_bytes);
+    exit(1);
   }
 
   genchase_args.nr_mixer_indices =
