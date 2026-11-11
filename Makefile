@@ -28,9 +28,12 @@ endif
 
 EXE=multichase multiload fairness pingpong
 
-.PHONY: all clean depend
+.PHONY: all clean depend test
 
 all: $(EXE)
+
+test: multiload
+	./multiload_test.sh ./multiload
 
 clean:
 	rm -f $(EXE) *.o expand.h
