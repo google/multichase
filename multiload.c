@@ -14,6 +14,7 @@
 #define _GNU_SOURCE
 #include <alloca.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <inttypes.h>
 #include <math.h>
 #include <pthread.h>
@@ -131,6 +132,7 @@ typedef union {
     size_t delay;               // injection delay for load
     uint64_t load_interval_ns;  // total interval in ns
     uint64_t load_active_ns;    // active duration in ns
+    int fd;                     // file descriptor for arena initialization
   } x;
 } per_thread_t;
 
@@ -859,8 +861,13 @@ static void *thread_start(void *data) {
                              page_size, use_thp,
                              args->x.load_total_memory + args->x.load_offset,
                              -1) + args->x.load_offset;
-    memset(args->x.load_arena, 1,
-           args->x.load_total_memory);  // ensure pages are mapped
+    if (args->x.fd != -1) {
+      fill_arena_from_file(args->x.load_arena, args->x.load_total_memory,
+                           args->x.fd);
+    } else {
+      memset(args->x.load_arena, 1,
+             args->x.load_total_memory);  // ensure pages are mapped
+    }
   }
 
   if (verbosity > 2)
@@ -914,6 +921,8 @@ int main(int argc, char **argv) {
   struct generate_chase_common_args genchase_args;
   uint64_t param_interval_us = 0;
   uint64_t param_active_us = 0;
+  const char *init_file = NULL;
+  int fd = -1;
 
   default_page_size = page_size = get_native_page_size();
 
@@ -924,7 +933,8 @@ int main(int argc, char **argv) {
 
   setvbuf(stdout, NULL, _IOLBF, BUFSIZ);
 
-  while ((c = getopt(argc, argv, "ac:d:l:F:p:HLm:n:oO:s:T:t:vXyW:i:u:")) != -1) {
+  while ((c = getopt(argc, argv,
+                     "ac:d:l:f:F:p:HLm:n:oO:s:T:t:vXyW:i:u:")) != -1) {
     switch (c) {
       case 'a':
         print_average = 1;
@@ -977,6 +987,18 @@ int main(int argc, char **argv) {
         delay = strtoul(optarg, &p, 0);
         if (*p) {
           fprintf(stderr, "Error: delay must be a non-negative integer\n");
+          exit(1);
+        }
+        break;
+      case 'f':
+        if (fd != -1) {
+          fprintf(stderr, "only one file can be provided\n");
+          exit(1);
+        }
+        init_file = optarg;
+        fd = open(optarg, O_RDONLY);
+        if (fd == -1) {
+          perror("open");
           exit(1);
         }
         break;
@@ -1175,6 +1197,8 @@ int main(int argc, char **argv) {
             "load pattern with suffix injection_delay. (default %zu)\n",
             DEF_DELAY);
     fprintf(stderr,
+            "-f file        fill the arena by tiling the contents of file\n");
+    fprintf(stderr,
             "-F nnnn[kmg]   amount of memory to use to flush the caches after "
             "constructing\n"
             "         the chase/memload and before starting the benchmark (use "
@@ -1234,6 +1258,12 @@ int main(int argc, char **argv) {
     exit(1);
   }
 
+  // -L asserts every chase slot starts NULL, but -f pre-fills the chase arena.
+  if (fd != -1 && use_longer_chase) {
+    fprintf(stderr, "-f cannot be combined with -L\n");
+    exit(1);
+  }
+
   // ensure some sanity in the various arguments
   if (genchase_args.tlb_locality < genchase_args.stride) {
     genchase_args.tlb_locality = genchase_args.stride;
@@ -1275,6 +1305,9 @@ int main(int argc, char **argv) {
     printf("tlb_locality = %zu\n", genchase_args.tlb_locality);
     printf("chase = %s\n", chase_optarg);
     printf("memload = %s\n", memload_optarg);
+    if (fd != -1) {
+      printf("file = %s\n", init_file);
+    }
     if (run_test_type == RUN_CHASE) printf("run_test_type = RUN_CHASE\n");
     if (run_test_type == RUN_BANDWIDTH)
       printf("run_test_type = RUN_BANDWIDTH\n");
@@ -1293,6 +1326,9 @@ int main(int argc, char **argv) {
         (char *)alloc_arena_mmap(page_size, use_thp,
                                  genchase_args.total_memory + offset, -1) +
         offset;
+    if (fd != -1) {
+      fill_arena_from_file(genchase_args.arena, genchase_args.total_memory, fd);
+    }
   }
   per_thread_t *thread_data = alloc_arena_mmap(
       default_page_size, false, nr_threads * sizeof(per_thread_t), -1);
@@ -1324,6 +1360,7 @@ int main(int argc, char **argv) {
     thread_data[i].x.use_longer_chase = use_longer_chase;
     thread_data[i].x.load_interval_ns = param_interval_us * 1000;
     thread_data[i].x.load_active_ns = param_active_us * 1000;
+    thread_data[i].x.fd = fd;
 
     if (run_test_type == RUN_CHASE_LOADED) {
       if (i == 0) {
@@ -1367,10 +1404,15 @@ int main(int argc, char **argv) {
   // testing
   if (verbosity > 2) printf("main: waiting for threads to initialize\n");
   pthread_mutex_lock(&wait_mutex);
-  if (nr_to_startup) {
+  // Loop on spurious wakeups so close(fd) below never races a thread's pread.
+  while (nr_to_startup) {
     pthread_cond_wait(&wait_cond, &wait_mutex);
   }
   pthread_mutex_unlock(&wait_mutex);
+
+  if (fd != -1) {
+    close(fd);  // Close the file descriptor after all threads have initialized.
+  }
   usleep(LOAD_DELAY_WARMUP_uS);  // Give OS scheduler thread migrations time to
                                  // settle down.
 
