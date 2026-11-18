@@ -25,6 +25,7 @@ bool page_size_is_huge(size_t page_size);
 void print_page_size(size_t page_size, bool use_thp);
 
 void *alloc_arena_mmap(size_t page_size, bool use_thp, size_t arena_size, int fd);
+void fill_arena_from_file(void *arena, size_t arena_size, int fd);
 
 void make_buffer_executable(void *buf, size_t len);
 #endif

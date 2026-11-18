@@ -13,13 +13,16 @@
  */
 #include "arena.h"
 
+#include <errno.h>
 #include <linux/mempolicy.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ipc.h>
 #include <sys/mman.h>
 #include <sys/shm.h>
+#include <sys/stat.h>
 #include <sys/syscall.h>
 #include <unistd.h>
 
@@ -265,6 +268,62 @@ void *alloc_arena_mmap(size_t page_size, bool use_thp, size_t arena_size, int fd
                          MAX_MEM_NODES);
   }
   return arena;
+}
+
+void fill_arena_from_file(void *arena, size_t arena_size, int fd) {
+  struct stat st;
+  size_t read_len;
+  size_t filled;
+  ssize_t bytes_read;
+
+  if (fd == -1) return;
+
+  if (fstat(fd, &st) == -1) {
+    perror("fstat");
+    exit(1);
+  }
+  if (!S_ISREG(st.st_mode)) {
+    fprintf(stderr, "init file must be a regular file\n");
+    exit(1);
+  }
+  if (st.st_size == 0) {
+    fprintf(stderr, "init file is empty\n");
+    exit(1);
+  }
+
+  /* pread() may return fewer bytes than requested (see pread(2)), so loop. */
+  read_len = (size_t)st.st_size < arena_size ? (size_t)st.st_size : arena_size;
+  filled = 0;
+  while (filled < read_len) {
+    bytes_read = pread(fd, (char *)arena + filled, read_len - filled,
+                       (off_t)filled);
+    if (bytes_read == -1) {
+      if (errno == EINTR) continue;
+      perror("pread file content");
+      exit(1);
+    }
+    if (bytes_read == 0) {
+      fprintf(stderr, "unexpected end of init file after %zu of %zu bytes\n",
+              filled, read_len);
+      exit(1);
+    }
+    filled += (size_t)bytes_read;
+  }
+
+  if (verbosity > 0) {
+    size_t preview_len = read_len < 10 ? read_len : 10;
+    printf("first %zu bytes of init file: ", preview_len);
+    fwrite(arena, 1, preview_len, stdout);
+    printf("\n");
+  }
+
+  /* Tile the rest of the arena by doubling the already-filled prefix. */
+  while (filled < arena_size) {
+    size_t chunk =
+        filled < (arena_size - filled) ? filled : (arena_size - filled);
+    memcpy((char *)arena + filled, arena, chunk);
+    filled += chunk;
+  }
 }
 
 void make_buffer_executable(void *buf, size_t len) {
