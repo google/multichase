@@ -548,6 +548,7 @@ int main(int argc, char **argv) {
   size_t nr_samples = DEF_NR_SAMPLES;
   size_t cache_flush_size = DEF_CACHE_FLUSH;
   size_t offset = DEF_OFFSET;
+  size_t base_object_size = 0;
   int print_average = 0;
   const char *extra_args = NULL;
   const char *chase_optarg = chases[0].name;
@@ -669,6 +670,14 @@ int main(int argc, char **argv) {
           exit(1);
         }
         break;
+      case 'S':
+        if (parse_mem_arg(optarg, &base_object_size)) {
+          fprintf(stderr,
+                  "base_object_size must be a non-negative integer (suffixed "
+                  "with k, m, or g)\n");
+          exit(1);
+        }
+        break;
       case 'T':
         if (parse_mem_arg(optarg, &genchase_args.tlb_locality)) {
           fprintf(stderr,
@@ -745,6 +754,8 @@ int main(int argc, char **argv) {
         "-o             perform an ordered traversal (rather than random)\n");
     fprintf(stderr, "-O nnnn[kmg]   offset the entire chase by nnnn bytes\n");
     fprintf(stderr, "-s nnnn[kmg]   stride size (default %zu)\n", DEF_STRIDE);
+    fprintf(stderr, "-S nnnn[kmg]   base object size in bytes, default set by"
+            " the chase\n");
     fprintf(stderr, "-T nnnn[kmg]   TLB locality in bytes (default %zu)\n",
             DEF_TLB_LOCALITY * default_page_size);
     fprintf(stderr,
@@ -806,19 +817,22 @@ int main(int argc, char **argv) {
         genchase_args.total_memory % genchase_args.stride;
   }
 
+  if (chase->base_object_size > base_object_size) {
+    base_object_size = chase->base_object_size;
+  }
   genchase_args.nr_mixer_indices =
-      genchase_args.stride / chase->base_object_size;
+      genchase_args.stride / base_object_size;
   if (genchase_args.nr_mixer_indices < nr_threads * chase->parallelism) {
     fprintf(stderr,
             "the stride is too small to interleave that many threads, need at "
             "least %zu bytes\n",
-            nr_threads * chase->parallelism * chase->base_object_size);
+            nr_threads * chase->parallelism * base_object_size);
     exit(1);
   }
 
   if (verbosity > 0) {
     printf("nr_mixer_indices = %zu\n", genchase_args.nr_mixer_indices);
-    printf("base_object_size = %zu\n", chase->base_object_size);
+    printf("base_object_size = %zu\n", base_object_size);
     printf("nr_threads = %zu\n", nr_threads);
     print_page_size(page_size, use_thp);
     printf("total_memory = %zu (%.1f MiB)\n", genchase_args.total_memory,
