@@ -690,6 +690,13 @@ static void load_stream_sum(per_thread_t *t) {
   uint64_t active_ns = t->x.load_active_ns;
   do {
     CHECK_DUTY_CYCLE(interval_ns, active_ns)
+    // -fno-unroll-loops (Makefile CFLAGS) also disables clang vectorizer
+    // interleaving, leaving one accumulator and a loop-carried add chain.
+    // Request independent accumulators so the loop is load-bound. Guarded
+    // because GCC warns on unknown pragmas, and the Makefile uses -Werror.
+#if defined(__clang__)
+#pragma clang loop interleave_count(4)
+#endif
     for (i = 0; i < N; ++i) {
       s += a[i];
     }
