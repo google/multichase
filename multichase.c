@@ -496,6 +496,12 @@ static void *thread_start(void *data) {
 
   // now flush our caches
   if (args->x.cache_flush_size) {
+#if HAVE_CLEAN_INVALIDATE_RANGE
+    // Write the chase out to memory instead of reading a flush buffer, so
+    // the chase starts uncached and clean rather than dirty.
+    clean_invalidate_range(args->x.genchase_args->arena,
+                           args->x.genchase_args->total_memory);
+#else
     size_t nr_elts = args->x.cache_flush_size / sizeof(size_t);
     size_t *p = args->x.flush_arena;
     size_t sum = 0;
@@ -505,6 +511,7 @@ static void *thread_start(void *data) {
       --nr_elts;
     }
     args->x.dummy += sum;
+#endif
   }
 
   // wait and/or wake up everyone if we're all ready
@@ -767,6 +774,9 @@ int main(int argc, char **argv) {
             "constructing\n"
             "               the chase and before starting the benchmark (use "
             "with nta)\n"
+            "               on aarch64 any non-zero value instead writes the "
+            "chase back\n"
+            "               to memory with DC CIVAC\n"
             "               default: %zu\n",
             DEF_CACHE_FLUSH);
     fprintf(
@@ -850,7 +860,8 @@ int main(int argc, char **argv) {
   per_thread_t *thread_data = alloc_arena_mmap(
       default_page_size, false, nr_threads * sizeof(per_thread_t), -1);
   void *flush_arena = NULL;
-  if (cache_flush_size) {
+  // Not read when the chase is cleaned with clean_invalidate_range().
+  if (cache_flush_size && !HAVE_CLEAN_INVALIDATE_RANGE) {
     flush_arena = alloc_arena_mmap(default_page_size, false, cache_flush_size,
                                    -1);
     memset(flush_arena, 1, cache_flush_size);  // ensure pages are mapped
